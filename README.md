@@ -2,7 +2,7 @@
 
 [中文](README.zh-CN.md)
 
-> Your Claude account has not disappeared. It no longer responds, but it still leaves an afterlight.
+> Disabled Claude accounts have not disappeared. They no longer respond, but they still leave an afterlight.
 
 Claude Starry is an unofficial, community-made memorial for disabled Claude accounts. It renders a shared galaxy with Three.js, where visitors can leave an alias, a date, and an optional memory as a star.
 

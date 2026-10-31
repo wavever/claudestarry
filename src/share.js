@@ -1,10 +1,7 @@
+import qrcode from 'qrcode-generator';
 import {normalizeLocale,sloganForLocale,translate} from './i18n.js';
 
-const WIDTH = 1080;
-const HEIGHT = 1500;
-const SNAPSHOT_HEIGHT = 626;
-const INSET = 72;
-const FONT_SANS = '"Microsoft YaHei", "PingFang SC", sans-serif';
+const FONT_SERIF = '"Songti SC", "PingFang SC", "Noto Serif SC", Georgia, serif';
 const FONT_MONO = '"SFMono-Regular", Consolas, monospace';
 
 function positionValues(position) {
@@ -19,10 +16,6 @@ function signedFixed(value) {
   return `${negative ? '-' : '+'}${Math.abs(value).toFixed(2)}`;
 }
 
-/**
- * Stable, display-safe coordinates shared by the star card and its image.
- * They describe this site's generated nebula, not a physical sky position.
- */
 export function formatStarCoordinates(position) {
   const values = positionValues(position);
   return values ? `(${signedFixed(values[0])}, ${signedFixed(values[1])}, ${signedFixed(values[2])})` : '';
@@ -36,32 +29,9 @@ function limitCharacters(value, maximum) {
   return Array.from(value).slice(0, maximum).join('');
 }
 
-function dateLabel(value, empty = '') {
-  const clean = text(value);
-  return /^\d{4}-\d{2}-\d{2}$/.test(clean) ? clean.replaceAll('-', ' / ') : empty;
-}
-
-function safeDesignation(designation, account) {
-  const supplied = text(designation);
-  if (supplied) return supplied;
-  const number = Number(account?.catalogNumber);
-  return Number.isSafeInteger(number) && number > 0
-    ? `AL ${String(number).padStart(6, '0')}`
-    : 'AL 000000';
-}
-
-function safeFilename(designation, account) {
-  const source = safeDesignation(designation, account).toUpperCase();
-  const matched = source.match(/AL\s*[-_]?\s*(\d{1,12})/i);
-  const number = matched ? matched[1].padStart(6, '0').slice(-12) : '000000';
-  return `afterlight-AL-${number}.png`;
-}
-
 function seededRandom(seedText) {
   let seed = 2166136261;
-  for (const character of String(seedText)) {
-    seed = Math.imul(seed ^ character.charCodeAt(0), 16777619);
-  }
+  for (const character of String(seedText)) seed = Math.imul(seed ^ character.charCodeAt(0), 16777619);
   return () => {
     seed += 0x6D2B79F5;
     let value = seed;
@@ -82,27 +52,25 @@ function roundedRect(context, x, y, width, height, radius) {
   context.closePath();
 }
 
-function drawBackground(context, seed) {
-  const background = context.createLinearGradient(0, 0, 0, HEIGHT);
+function drawBaseBackground(context, width, height, seed) {
+  const background = context.createLinearGradient(0, 0, 0, height);
   background.addColorStop(0, '#030303');
-  background.addColorStop(0.43, '#0a0a09');
-  background.addColorStop(1, '#050505');
+  background.addColorStop(0.44, '#0a0a09');
+  background.addColorStop(1, '#040404');
   context.fillStyle = background;
-  context.fillRect(0, 0, WIDTH, HEIGHT);
-
-  const glow = context.createRadialGradient(WIDTH * 0.5, SNAPSHOT_HEIGHT * 0.46, 0, WIDTH * 0.5, SNAPSHOT_HEIGHT * 0.46, 720);
-  glow.addColorStop(0, 'rgba(180, 154, 105, 0.105)');
-  glow.addColorStop(0.34, 'rgba(102, 93, 82, 0.042)');
+  context.fillRect(0, 0, width, height);
+  const glow = context.createRadialGradient(width * 0.5, height * 0.48, 0, width * 0.5, height * 0.48, width * 0.55);
+  glow.addColorStop(0, 'rgba(180, 154, 105, 0.1)');
+  glow.addColorStop(0.4, 'rgba(102, 93, 82, 0.04)');
   glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
   context.fillStyle = glow;
-  context.fillRect(0, 0, WIDTH, HEIGHT);
-
+  context.fillRect(0, 0, width, height);
   const random = seededRandom(seed);
-  for (let index = 0; index < 205; index += 1) {
-    const x = random() * WIDTH;
-    const y = random() * HEIGHT;
-    const alpha = 0.035 + random() * 0.19;
-    const radius = random() < 0.9 ? 0.5 + random() * 1.1 : 1.8 + random() * 1.9;
+  for (let index = 0; index < 220; index += 1) {
+    const x = random() * width;
+    const y = random() * height;
+    const alpha = 0.03 + random() * 0.16;
+    const radius = random() < 0.9 ? 0.5 + random() * 1.1 : 1.4 + random() * 1.8;
     context.fillStyle = `rgba(231, 221, 199, ${alpha})`;
     context.beginPath();
     context.arc(x, y, radius, 0, Math.PI * 2);
@@ -110,30 +78,23 @@ function drawBackground(context, seed) {
   }
 }
 
-function drawSnapshotCover(context, image) {
+function drawSnapshot(context, image, width, height) {
   if (!image) return;
   const sourceWidth = Number(image.videoWidth || image.naturalWidth || image.width);
   const sourceHeight = Number(image.videoHeight || image.naturalHeight || image.height);
   if (!(sourceWidth > 0 && sourceHeight > 0)) return;
-
-  const scale = Math.max(WIDTH / sourceWidth, SNAPSHOT_HEIGHT / sourceHeight);
-  const cropWidth = WIDTH / scale;
-  const cropHeight = SNAPSHOT_HEIGHT / scale;
+  const scale = Math.max(width / sourceWidth, height / sourceHeight);
+  const cropWidth = width / scale;
+  const cropHeight = height / scale;
   const sourceX = Math.max(0, (sourceWidth - cropWidth) / 2);
   const sourceY = Math.max(0, (sourceHeight - cropHeight) / 2);
-  context.save();
-  context.beginPath();
-  context.rect(0, 0, WIDTH, SNAPSHOT_HEIGHT);
-  context.clip();
-  context.drawImage(image, sourceX, sourceY, cropWidth, cropHeight, 0, 0, WIDTH, SNAPSHOT_HEIGHT);
-  context.restore();
-
-  const wash = context.createLinearGradient(0, 0, 0, SNAPSHOT_HEIGHT);
-  wash.addColorStop(0, 'rgba(0, 0, 0, 0.30)');
-  wash.addColorStop(0.49, 'rgba(0, 0, 0, 0.03)');
-  wash.addColorStop(1, 'rgba(5, 5, 5, 0.94)');
+  context.drawImage(image, sourceX, sourceY, cropWidth, cropHeight, 0, 0, width, height);
+  const wash = context.createLinearGradient(0, 0, 0, height);
+  wash.addColorStop(0, 'rgba(2, 2, 2, 0.24)');
+  wash.addColorStop(0.5, 'rgba(2, 2, 2, 0)');
+  wash.addColorStop(1, 'rgba(2, 2, 2, 0.3)');
   context.fillStyle = wash;
-  context.fillRect(0, 0, WIDTH, SNAPSHOT_HEIGHT);
+  context.fillRect(0, 0, width, height);
 }
 
 function ellipsize(context, value, maxWidth, force = false) {
@@ -149,27 +110,23 @@ function ellipsize(context, value, maxWidth, force = false) {
 
 function wrappedLines(context, value, maxWidth, maxLines = Infinity) {
   const source = String(value || '');
-  if (!source) return [''];
+  if (!source) return [];
   const lines = [];
   let line = '';
   let pendingSpace = false;
-
   const flush = () => {
     if (!line) return;
     lines.push(line);
     line = '';
     pendingSpace = false;
   };
-
   const appendLongToken = token => {
     for (const character of Array.from(token)) {
       if (line && context.measureText(line + character).width > maxWidth) flush();
       line += character;
     }
   };
-
-  const paragraphs = source.split('\n');
-  paragraphs.forEach(paragraph => {
+  source.split('\n').forEach(paragraph => {
     const tokens = paragraph.split(/(\s+)/u).filter(Boolean);
     if (!tokens.length) {
       lines.push(' ');
@@ -193,14 +150,9 @@ function wrappedLines(context, value, maxWidth, maxLines = Infinity) {
     }
     flush();
   });
-
   const output = lines.slice(0, maxLines);
-  if (!output.length) return [''];
-  if (lines.length > output.length) {
-    output[output.length - 1] = ellipsize(context, output[output.length - 1], maxWidth, true);
-  }
-  // A lone punctuation mark is especially conspicuous on a social card. Fold
-  // it back into the preceding line (and ellipsize if necessary) instead.
+  if (!output.length) return [];
+  if (lines.length > output.length) output[output.length - 1] = ellipsize(context, output[output.length - 1], maxWidth, true);
   if (output.length > 1 && /^[\s,.;:!?，。！？、；：]+$/u.test(output[output.length - 1])) {
     const punctuation = output.pop();
     output[output.length - 1] = ellipsize(context, output[output.length - 1] + punctuation, maxWidth);
@@ -208,17 +160,142 @@ function wrappedLines(context, value, maxWidth, maxLines = Infinity) {
   return output;
 }
 
-function drawLines(context, lines, x, baseline, lineHeight) {
-  lines.forEach((line, index) => context.fillText(line, x, baseline + index * lineHeight));
-  return baseline + Math.max(0, lines.length - 1) * lineHeight;
+function drawLine(context, card, scale) {
+  if (!card.star?.visible) return;
+  const startX = card.star.x * scale;
+  const startY = card.star.y * scale;
+  const endX = (card.side === 'left' ? card.x + card.w : card.x) * scale;
+  const endY = Math.max(card.y + 24, Math.min(card.y + card.h - 24, card.star.y)) * scale;
+  const gap = Math.max(48, Math.abs(endX - startX) * 0.34);
+  const bend = Math.min(92, Math.max(24, Math.abs(endY - startY) * 0.28 + gap * 0.14));
+  const direction = endX >= startX ? 1 : -1;
+  context.save();
+  context.strokeStyle = 'rgba(236, 218, 190, 0.78)';
+  context.lineWidth = 1.25 * scale;
+  context.lineCap = 'round';
+  context.shadowColor = 'rgba(220, 195, 155, 0.36)';
+  context.shadowBlur = 5 * scale;
+  context.beginPath();
+  context.moveTo(startX, startY);
+  context.bezierCurveTo(
+    startX + gap * direction,
+    startY + bend * scale,
+    endX - gap * direction,
+    endY - bend * scale,
+    endX,
+    endY,
+  );
+  context.stroke();
+  context.restore();
+
+  const halo = context.createRadialGradient(startX, startY, 0, startX, startY, 7 * scale);
+  halo.addColorStop(0, 'rgba(255, 246, 230, 0.95)');
+  halo.addColorStop(0.35, 'rgba(238, 200, 160, 0.45)');
+  halo.addColorStop(1, 'rgba(238, 200, 160, 0)');
+  context.fillStyle = halo;
+  context.beginPath();
+  context.arc(startX, startY, 7 * scale, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = 'rgba(255, 250, 242, 0.95)';
+  context.beginPath();
+  context.arc(startX, startY, 2 * scale, 0, Math.PI * 2);
+  context.fill();
 }
 
-function drawLabel(context, value, x, y) {
-  context.fillStyle = '#958a79';
-  context.font = `12px ${FONT_SANS}`;
-  context.letterSpacing = '1.4px';
-  context.fillText(value, x, y);
+function drawCard(context, card, scale, t) {
+  const x = card.x * scale;
+  const y = card.y * scale;
+  const width = card.w * scale;
+  const height = card.h * scale;
+  const padding = 14 * scale;
+  const contentWidth = width - padding * 2;
+  const account = card.account;
+  const catalog = text(card.designation) || `AL ${String(account.catalogNumber || 0).padStart(6, '0')}`;
+  const alias = limitCharacters(text(account.alias, catalog) || catalog, 32);
+  const message = limitCharacters(text(account.message), 180);
+  const started = text(account.started);
+  const disabled = text(account.date);
+
+  context.save();
+  roundedRect(context, x, y, width, height, 10 * scale);
+  context.clip();
+  context.fillStyle = 'rgba(13, 12, 11, 0.93)';
+  context.fillRect(x, y, width, height);
+
+  let cursor = y + padding + 9 * scale;
+  context.textAlign = 'left';
+  context.fillStyle = '#a48d6d';
+  context.font = `600 ${9 * scale}px ${FONT_MONO}`;
+  context.letterSpacing = `${1.4 * scale}px`;
+  context.fillText(catalog, x + padding, cursor);
   context.letterSpacing = '0px';
+  cursor += 22 * scale;
+
+  context.fillStyle = '#eee5d8';
+  context.font = `400 ${22 * scale}px ${FONT_SERIF}`;
+  const nameLines = wrappedLines(context, alias, contentWidth, 2);
+  nameLines.forEach((line, index) => context.fillText(line, x + padding, cursor + index * 28 * scale));
+  cursor += (nameLines.length - 1) * 28 * scale + 13 * scale;
+
+  if (started || disabled) {
+    const label = started ? t('card.onlinePeriod') : t('card.disabledDate');
+    const value = started && disabled
+      ? `${started.replaceAll('-', '/')}\n— ${disabled.replaceAll('-', '/')}`
+      : (started || disabled).replaceAll('-', '/');
+    cursor += 10 * scale;
+    context.strokeStyle = 'rgba(213, 197, 172, 0.12)';
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(x + padding, cursor);
+    context.lineTo(x + width - padding, cursor);
+    context.stroke();
+    cursor += 10 * scale;
+    context.fillStyle = '#8a8174';
+    context.font = `${10 * scale}px ${FONT_MONO}`;
+    context.fillText(label, x + padding, cursor);
+    cursor += 13 * scale;
+    context.fillStyle = '#d0c0a9';
+    context.font = `${13 * scale}px ${FONT_MONO}`;
+    const dateLines = wrappedLines(context, value, contentWidth, 2);
+    dateLines.forEach((line, index) => context.fillText(line, x + padding, cursor + index * 16 * scale));
+    cursor += Math.max(0, dateLines.length - 1) * 16 * scale + 14 * scale;
+  }
+
+  if (message) {
+    context.fillStyle = '#d0c6b7';
+    context.font = `${13 * scale}px ${FONT_SERIF}`;
+    const storyLines = wrappedLines(context, message, contentWidth, 4);
+    storyLines.forEach((line, index) => context.fillText(line, x + padding, cursor + index * 19 * scale));
+  }
+  context.restore();
+
+  roundedRect(context, x, y, width, height, 10 * scale);
+  context.strokeStyle = 'rgba(218, 200, 167, 0.28)';
+  context.lineWidth = 1;
+  context.stroke();
+}
+
+function drawHeader(context, { title, countText, scale, width }) {
+  context.textAlign = 'left';
+  context.fillStyle = '#ce6d4d';
+  context.font = `500 ${21 * scale}px ${FONT_SERIF}`;
+  context.letterSpacing = `${1.5 * scale}px`;
+  context.fillText(title, 18 * scale, 36 * scale);
+  context.letterSpacing = '0px';
+  if (!countText) return;
+  context.fillStyle = 'rgba(226, 219, 207, 0.82)';
+  context.font = `400 ${15 * scale}px ${FONT_SERIF}`;
+  context.fillText(ellipsize(context, countText, width - 36 * scale), 18 * scale, 65 * scale);
+}
+
+function drawSlogan(context, slogan, { scale, width, height }) {
+  context.textAlign = 'left';
+  context.fillStyle = 'rgba(225, 216, 201, 0.9)';
+  context.font = `400 ${23 * scale}px ${FONT_SERIF}`;
+  const lines = wrappedLines(context, slogan, Math.min(width * 0.68, 760 * scale), 3);
+  const lineHeight = 34 * scale;
+  const first = height - 56 * scale - (lines.length - 1) * lineHeight;
+  lines.forEach((line, index) => context.fillText(line, 18 * scale, first + index * lineHeight));
 }
 
 async function resolveSnapshot(snapshot, errorMessage) {
@@ -243,127 +320,117 @@ function canvasToBlob(canvas, errorMessage) {
   });
 }
 
+function drawQrTile(context, value, x, y, size) {
+  const qr=qrcode(0,'M');
+  qr.addData(value);
+  qr.make();
+  const count=qr.getModuleCount();
+  const quiet=4;
+  const total=count+quiet*2;
+  const cell=size/total;
+  // Draw the modules directly in the warm theme colour; the dark panel behind
+  // supplies contrast, so there is no white tile / background square.
+  context.fillStyle='#d9c8ae';
+  for(let row=0;row<count;row++){
+    for(let column=0;column<count;column++){
+      if(!qr.isDark(row,column))continue;
+      context.fillRect(x+(column+quiet)*cell,y+(row+quiet)*cell,cell+0.35,cell+0.35);
+    }
+  }
+}
+
 /**
- * Render an export-ready social image.  The caller owns download/share UI;
- * this function only returns a deterministic PNG File.
+ * Compose a screenshot-like page image with up to three user cards (and their
+ * connector lines) placed exactly where the temporary DOM cards were shown.
  */
-export async function createStarShare({ account = {}, designation, snapshot, siteUrl, slogan, locale = 'zh-CN' } = {}) {
-  const resolvedLocale=normalizeLocale(locale)||'zh-CN';
-  const t=(key,values)=>translate(resolvedLocale,key,values);
+export async function createCardsPageShare({
+  snapshot,
+  cards = [],
+  viewport = { width: 1200, height: 800 },
+  countText = '',
+  siteUrl = '',
+  slogan,
+  locale = 'zh-CN',
+} = {}) {
+  const resolvedLocale = normalizeLocale(locale) || 'zh-CN';
+  const t = (key, values) => translate(resolvedLocale, key, values);
   if (typeof document === 'undefined') throw new Error(t('share.imageFailed'));
-  const image = await resolveSnapshot(snapshot,t('share.imageFailed'));
+
+  const image = await resolveSnapshot(snapshot, t('share.imageFailed'));
+  const viewWidth = Math.max(1, Number(viewport.width) || 1200);
+  const viewHeight = Math.max(1, Number(viewport.height) || 800);
+  const scale = Math.max(1, Math.min(2, 1600 / viewWidth));
+  const width = Math.round(viewWidth * scale);
+  const height = Math.round(viewHeight * scale);
+
   const canvas = document.createElement('canvas');
-  canvas.width = WIDTH;
-  canvas.height = HEIGHT;
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) throw new Error(t('share.imageFailed'));
 
-  const catalog = safeDesignation(designation, account);
-  const alias = limitCharacters(text(account.alias, catalog) || catalog, 32);
-  const message = limitCharacters(text(account.message, t('share.defaultMessage')) || t('share.defaultMessage'), 180);
-  const url = limitCharacters(text(siteUrl), 112);
-  const shareSlogan = String(slogan ?? sloganForLocale(resolvedLocale))
-    .replace(/\r\n?/g, '\n')
-    .replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ')
-    .replace(/[^\S\n]+/g, ' ')
-    .trim() || sloganForLocale(resolvedLocale);
-  const seed = `${account.id || catalog}:${account.date || ''}`;
+  context.textBaseline = 'alphabetic';
+  drawBaseBackground(context, width, height, 'page-cards');
+  drawSnapshot(context, image, width, height);
+  drawHeader(context, { title: t('brand.title'), countText, scale, width });
 
-  drawBackground(context, seed);
-  drawSnapshotCover(context, image);
+  for (const card of cards) drawLine(context, card, scale);
+  for (const card of cards) drawCard(context, card, scale, t);
 
-  context.save();
-  context.shadowColor = 'rgba(0, 0, 0, 0.58)';
-  context.shadowBlur = 44;
-  context.shadowOffsetY = 18;
-  roundedRect(context, INSET, 564, WIDTH - INSET * 2, 866, 22);
-  context.fillStyle = 'rgba(15, 14, 13, 0.94)';
-  context.fill();
-  context.restore();
-  roundedRect(context, INSET, 564, WIDTH - INSET * 2, 866, 22);
-  context.strokeStyle = 'rgba(218, 200, 167, 0.26)';
-  context.lineWidth = 1;
-  context.stroke();
-
-  const left = INSET + 42;
-  const right = WIDTH - INSET - 42;
-  context.textAlign = 'left';
-  context.fillStyle = '#b8a483';
-  context.font = `12px ${FONT_MONO}`;
-  context.letterSpacing = '2.5px';
-  context.fillText(`${t('brand.title').toUpperCase()}  /  ${t('share.record')}`, left, 620);
-  context.letterSpacing = '0px';
-
-  context.fillStyle = '#eee6d9';
-  context.font = `50px ${FONT_SANS}`;
-  const aliasLines = wrappedLines(context, alias, right - left, 2);
-  const aliasBottom = drawLines(context, aliasLines, left, 682, 64);
-
-  context.fillStyle = '#c9ad7f';
-  context.font = `18px ${FONT_MONO}`;
-  context.letterSpacing = '1.8px';
-  context.fillText(catalog, left, aliasBottom + 42);
-  context.letterSpacing = '0px';
-
-  const ruleY = aliasBottom + 72;
-  context.strokeStyle = 'rgba(218, 200, 167, 0.20)';
-  context.beginPath();
-  context.moveTo(left, ruleY);
-  context.lineTo(right, ruleY);
-  context.stroke();
-
-  const coordinateY = ruleY + 37;
-  drawLabel(context, `${t('share.coordinates')}  ·  XYZ`, left, coordinateY);
-  context.fillStyle = '#d8cbbc';
-  context.font = `17px ${FONT_MONO}`;
-  context.fillText(formatStarCoordinates(account.position) || t('share.coordinatesUnavailable'), left, coordinateY + 31);
-  context.fillStyle = '#7f786e';
-  context.font = `12px ${FONT_SANS}`;
-  context.fillText(t('share.located'), left, coordinateY + 56);
-
-  const dateX = left + 474;
-  drawLabel(context, t('share.started'), dateX, coordinateY);
-  context.fillStyle = '#d8cbbc';
-  context.font = `16px ${FONT_MONO}`;
-  context.fillText(dateLabel(account.started, t('share.unfilled')), dateX, coordinateY + 29);
-  drawLabel(context, t('share.disabled'), dateX, coordinateY + 61);
-  context.fillStyle = '#d8cbbc';
-  context.font = `16px ${FONT_MONO}`;
-  context.fillText(dateLabel(account.date, t('share.unrecorded')), dateX, coordinateY + 90);
-
-  const messageRuleY = coordinateY + 120;
-  context.strokeStyle = 'rgba(218, 200, 167, 0.15)';
-  context.beginPath();
-  context.moveTo(left, messageRuleY);
-  context.lineTo(right, messageRuleY);
-  context.stroke();
-  drawLabel(context, t('share.message'), left, messageRuleY + 35);
-  context.fillStyle = '#d9d1c6';
-  context.font = `24px ${FONT_SANS}`;
-  const messageLines = wrappedLines(context, message, right - left, 6);
-  const messageBottom = drawLines(context, messageLines, left, messageRuleY + 76, 39);
-
-  const sloganY = Math.max(messageBottom + 70, 1283);
-  context.strokeStyle = 'rgba(218, 200, 167, 0.15)';
-  context.beginPath();
-  context.moveTo(left, sloganY - 29);
-  context.lineTo(right, sloganY - 29);
-  context.stroke();
-  context.fillStyle = '#a79b8b';
-  context.font = `19px ${FONT_SANS}`;
-  const sloganLines = wrappedLines(context, shareSlogan, right - left, 2);
-  drawLines(context, sloganLines, left, sloganY, 31);
-
-  if (url) {
-    context.fillStyle = '#a59985';
-    context.font = `20px ${FONT_MONO}`;
-    context.fillText(ellipsize(context, url, right - left - 220), left, 1401);
+  if (!cards.length) {
+    drawSlogan(context, String(slogan ?? sloganForLocale(resolvedLocale)), { scale, width, height });
   }
-  context.fillStyle = '#6f675c';
-  context.font = `11px ${FONT_MONO}`;
-  context.textAlign = 'right';
-  context.fillText('CLAUDE STARRY', right, 1401);
 
-  const blob = await canvasToBlob(canvas,t('share.imageFailed'));
-  return new File([blob], safeFilename(catalog, account), { type: 'image/png' });
+  // QR + URL directly on the image, bottom-right, in theme colours. A dark
+  // glass panel supplies contrast without introducing a white background.
+  const url = limitCharacters(text(siteUrl), 110);
+  if (url) {
+    const displayUrl = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const pad = Math.round(11 * scale);
+    const qrSize = Math.max(90, Math.min(160, Math.round(width * 0.1)));
+    const maxPanel = Math.round(width * 0.28);
+    let urlFont = Math.max(10, 12 * scale);
+    context.font = `${urlFont}px ${FONT_MONO}`;
+    let measured = context.measureText(displayUrl).width;
+    if (measured + pad * 2 > maxPanel) {
+      urlFont = Math.max(8, Math.floor(urlFont * (maxPanel - pad * 2) / measured));
+      context.font = `${urlFont}px ${FONT_MONO}`;
+      measured = context.measureText(displayUrl).width;
+    }
+    const panelW = Math.min(maxPanel, Math.max(qrSize + pad * 2, Math.ceil(measured + pad * 2)));
+    const panelH = pad + qrSize + Math.round(6 * scale) + urlFont * 1.35 + pad;
+    const panelX = width - panelW - Math.round(18 * scale);
+    const panelY = height - panelH - Math.round(18 * scale);
+    context.save();
+    context.fillStyle = 'rgba(8, 8, 7, 0.8)';
+    context.fillRect(panelX, panelY, panelW, panelH);
+    context.strokeStyle = 'rgba(213, 197, 172, 0.52)';
+    context.lineWidth = Math.max(1, scale * 0.9);
+    context.strokeRect(panelX, panelY, panelW, panelH);
+    context.textAlign = 'center';
+    const qrX = panelX + (panelW - qrSize) / 2;
+    const qrY = panelY + pad;
+    try {
+      drawQrTile(context, url, qrX, qrY, qrSize);
+    } catch (error) {
+      console.warn('QR code unavailable', error);
+    }
+    context.fillStyle = 'rgba(217, 200, 174, 0.82)';
+    context.font = `${urlFont}px ${FONT_MONO}`;
+    context.fillText(
+      ellipsize(context, displayUrl, panelW - pad * 2),
+      panelX + panelW / 2,
+      panelY + panelH - pad,
+    );
+    context.restore();
+  }
+
+  // Thin theme-coloured frame baked into the image; no matte or footer.
+  const border = Math.max(1, Math.round(scale * 1.2));
+  context.strokeStyle = 'rgba(213, 197, 172, 0.55)';
+  context.lineWidth = border;
+  context.strokeRect(border / 2, border / 2, width - border, height - border);
+
+  const blob = await canvasToBlob(canvas, t('share.imageFailed'));
+  return new File([blob], 'claude-starry-share.png', { type: 'image/png' });
 }

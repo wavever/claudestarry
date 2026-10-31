@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ACCOUNT_STAR_MAX_CSS_DIAMETER, ACCOUNT_STAR_MIN_CSS_DIAMETER, accountStarCssDiameter, accountStarFramebufferDiameter, glslFloatLiteral, Universe } from './universe.js';
+import { ACCOUNT_STAR_GLOW_SCALE, ACCOUNT_STAR_MAX_CSS_DIAMETER, ACCOUNT_STAR_MIN_CSS_DIAMETER, accountStarCssDiameter, accountStarFramebufferDiameter, glslFloatLiteral, Universe } from './universe.js';
 
 function view() {
   const u=Object.create(Universe.prototype);
@@ -175,15 +175,17 @@ test('record updates preserve an active meteor by ID when point indices change',
   u.stars.geometry.dispose();u.starMaterial.dispose();
 });
 
-test('initial account stars wait until the nebula has finished, while reduced motion is immediate',()=>{
+test('account stars reveal in parallel as the nebula forms and finish within two seconds',()=>{
   const u=Object.create(Universe.prototype);
   u.config={lightDuration:2,textHold:1,textMorphDuration:1.7,logoHold:.6,nebulaDuration:6};
-  const nebulaEnd=11.3;
+  const nebulaStart=5.3;
   u.reduced=false;
-  assert.equal(u.entryAccountReveal(nebulaEnd),0);
-  assert.ok(u.entryAccountReveal(nebulaEnd+.6)>0);
-  assert.ok(u.entryAccountReveal(nebulaEnd+.6)<1);
-  assert.equal(u.entryAccountReveal(nebulaEnd+2),1);
+  assert.equal(u.entryAccountReveal(nebulaStart-.1),0);
+  assert.equal(u.entryAccountReveal(nebulaStart),0);
+  assert.ok(u.entryAccountReveal(nebulaStart+.6)>0);
+  assert.ok(u.entryAccountReveal(nebulaStart+.6)<1);
+  assert.ok(Math.abs(u.entryAccountReveal(nebulaStart+1)-.5)<1e-10);
+  assert.equal(u.entryAccountReveal(nebulaStart+2),1);
   u.reduced=true;
   assert.equal(u.entryAccountReveal(0),1);
 });
@@ -221,7 +223,7 @@ test('switching intro language updates text particles without moving the camera 
   u.history.geometry.dispose();
 });
 
-test('account stars stay in the requested CSS diameter range at any DPR or ordinary depth',()=>{
+test('account star bright cores follow the lifespan size range and keep a glow sprite',()=>{
   assert.equal(accountStarCssDiameter(0,44,44),ACCOUNT_STAR_MIN_CSS_DIAMETER);
   assert.equal(accountStarCssDiameter(1,44,44),ACCOUNT_STAR_MAX_CSS_DIAMETER);
   for(const [scale,depth,reference,twinkle] of [[0,20,44,-1],[.5,44,44,.7],[1,90,44,1]]){
@@ -229,7 +231,7 @@ test('account stars stay in the requested CSS diameter range at any DPR or ordin
     assert.ok(diameter>=ACCOUNT_STAR_MIN_CSS_DIAMETER&&diameter<=ACCOUNT_STAR_MAX_CSS_DIAMETER);
   }
   const cssDiameter=accountStarCssDiameter(.5,44,44,.4,1);
-  assert.equal(accountStarFramebufferDiameter(cssDiameter,2)/2,cssDiameter);
+  assert.equal(accountStarFramebufferDiameter(cssDiameter,2),cssDiameter*ACCOUNT_STAR_GLOW_SCALE*2);
   assert.equal(accountStarCssDiameter(.5,44,44,-1,0),accountStarCssDiameter(.5,44,44,1,0));
 });
 
@@ -239,15 +241,17 @@ test('account star phase and speed are stable per ID, independent between IDs, a
   const u=Object.create(Universe.prototype);
   Object.assign(u,{accounts:[],accountReveal:1,group:{remove(){},add(){}},starMaterial:new THREE.PointsMaterial()});
   u.setAccounts([a,b]);
-  const initial={
-    a:{phase:u.stars.geometry.attributes.aPhase.getX(0),speed:u.stars.geometry.attributes.aSpeed.getX(0)},
-    b:{phase:u.stars.geometry.attributes.aPhase.getX(1),speed:u.stars.geometry.attributes.aSpeed.getX(1)},
-  };
+  const sample=(index)=>({
+    phase:u.stars.geometry.attributes.aPhase.getX(index),
+    speed:u.stars.geometry.attributes.aSpeed.getX(index),
+    breathPhase:u.stars.geometry.attributes.aBreathPhase.getX(index),
+    breathSpeed:u.stars.geometry.attributes.aBreathSpeed.getX(index),
+  });
+  const initial={a:sample(0),b:sample(1)};
   assert.notDeepEqual(initial.a,initial.b);
+  assert.notEqual(initial.a.breathPhase,initial.b.breathPhase);
   u.setAccounts([b,a]);
-  assert.equal(u.stars.geometry.attributes.aPhase.getX(0),initial.b.phase);
-  assert.equal(u.stars.geometry.attributes.aSpeed.getX(0),initial.b.speed);
-  assert.equal(u.stars.geometry.attributes.aPhase.getX(1),initial.a.phase);
-  assert.equal(u.stars.geometry.attributes.aSpeed.getX(1),initial.a.speed);
+  assert.deepEqual(sample(0),initial.b);
+  assert.deepEqual(sample(1),initial.a);
   u.stars.geometry.dispose();u.starMaterial.dispose();
 });

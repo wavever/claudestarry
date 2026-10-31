@@ -7,12 +7,12 @@
   <meta name="description" content="每一个被停用的 Claude 账号，都在星河里留下一点余光。" data-i18n-content="meta.description">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Claude 余光 · Claude Starry" data-i18n-content="meta.title">
-  <meta name="twitter:description" content="被停用的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光。" data-i18n-content="meta.socialDescription">
+  <meta name="twitter:description" content="被停用的 Claude 账号没有消失，只是从此不再回应，但仍留有余光。" data-i18n-content="meta.socialDescription">
   <meta name="twitter:image" content="https://claudestarry.pages.dev/github-social-preview-bilingual-v3.jpg">
   <meta name="twitter:image:alt" content="Claude Starry / Claude 余光 — 被停用的 Claude 账号没有消失，只是从此不再回应，但仍留有余光。">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Claude 余光 · Claude Starry" data-i18n-content="meta.title">
-  <meta property="og:description" content="被停用的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光。" data-i18n-content="meta.socialDescription">
+  <meta property="og:description" content="被停用的 Claude 账号没有消失，只是从此不再回应，但仍留有余光。" data-i18n-content="meta.socialDescription">
   <meta property="og:image" content="https://claudestarry.pages.dev/github-social-preview-bilingual-v3.jpg">
   <meta property="og:image:type" content="image/jpeg">
   <meta property="og:image:width" content="1920">
@@ -36,9 +36,12 @@
   ></script>
 </head>
 <body>
-  <main id="universe" aria-label="被停用的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光" data-i18n-attrs="aria-label:scene.aria">
+  <main id="universe" aria-label="被停用的 Claude 账号没有消失，只是从此不再回应，但仍留有余光" data-i18n-attrs="aria-label:scene.aria">
     <div id="scene"></div>
     <div class="vignette" aria-hidden="true"></div>
+    <div id="share-cards-layer" class="share-cards-layer" hidden aria-hidden="true">
+      <svg id="share-cards-lines" class="share-cards-lines" aria-hidden="true"></svg>
+    </div>
     <header class="app-brand" aria-label="Claude 余光" data-i18n-attrs="aria-label:brand.aria">
       <div class="brand-title" data-i18n="brand.title">Claude 余光</div>
       <div id="account-counter" class="account-counter" aria-label="已有 0 个停用的 claude 账号留下余光" data-i18n-attrs="aria-label:counter.aria">
@@ -54,6 +57,12 @@
         <button class="locale-switch__option" type="button" data-locale="en" aria-pressed="false">EN</button>
       </div>
       <div class="social-links">
+        <button id="share-page" class="social-share" type="button" aria-label="分享" title="分享" data-i18n-attrs="aria-label:share.pageButton|title:share.pageButton" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <path d="m8.6 10.5 6.8-4"/><path d="m8.6 13.5 6.8 4"/>
+          </svg>
+        </button>
         <a href="https://github.com/wavever/claudestarry" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看 Claude Starry" data-i18n-attrs="aria-label:utility.github" title="GitHub"><img src="/icons/github.svg" alt="" aria-hidden="true" width="16" height="16"></a>
         <a href="https://x.com/HtWavever" target="_blank" rel="noopener noreferrer" aria-label="在 X 关注 @HtWavever" data-i18n-attrs="aria-label:utility.x" title="X @HtWavever"><img src="/icons/x.svg" alt="" aria-hidden="true" width="16" height="16"></a>
       </div>
@@ -92,33 +101,13 @@
     <i id="star-anchor" hidden aria-hidden="true"></i>
     <aside id="star-card" hidden aria-label="星星名片" data-i18n-attrs="aria-label:card.aria">
       <button id="card-close" class="card-close" aria-label="收起名片" data-i18n-attrs="aria-label:card.close">×</button>
-      <p class="kicker" data-i18n="card.record">星表记录</p>
-      <h2 id="card-name"></h2>
       <p id="card-catalog" class="card-catalog"></p>
+      <h2 id="card-name"></h2>
       <div id="card-dates-group" class="card-dates-group">
-        <span id="card-dates-label" class="card-dates-label" data-i18n="card.dateRange">注册 / 停用</span>
+        <span id="card-dates-label" class="card-dates-label" data-i18n="card.onlinePeriod">在线区间</span>
         <span id="card-dates" class="card-dates-val"></span>
       </div>
       <p id="card-message" class="card-message"></p>
-      <div class="card-actions">
-        <button id="card-share" class="card-btn card-btn--share" type="button" title="分享名片" aria-label="分享名片" data-i18n-attrs="title:card.shareImage|aria-label:card.shareImage">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="m8.6 10.5 6.8-4"></path><path d="m8.6 13.5 6.8 4"></path></svg>
-          <span data-i18n="card.shareImage">分享名片</span>
-        </button>
-        <p class="card-share-hint" data-i18n="card.shareHint">“分享名片”会携带图片；X 仅预填文字。</p>
-        <div class="card-actions__secondary">
-          <button id="card-twitter" class="card-btn card-btn--twitter" type="button" title="在 X 发布文案" aria-label="在 X 发布文案" data-i18n-attrs="title:card.shareX|aria-label:card.shareX">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-            <span class="card-btn__label" data-i18n="card.shareX">在 X 发布文案</span>
-          </button>
-          <button id="card-copy-img" class="card-btn card-btn--icon" type="button" title="复制星河名片截图到剪贴板" aria-label="复制星河名片截图" data-i18n-attrs="title:card.copyImage|aria-label:card.copyImage">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-          </button>
-          <button id="card-download-img" class="card-btn card-btn--icon" type="button" title="下载星河名片截图" aria-label="下载星河名片截图" data-i18n-attrs="title:card.downloadImage|aria-label:card.downloadImage">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-          </button>
-        </div>
-      </div>
     </aside>
     <div id="webgl-error" hidden data-i18n="webgl.error">星河需要支持 WebGL 2 的浏览器，请开启硬件加速后刷新。</div>
     <div id="toast" role="status" aria-live="polite"></div>
@@ -141,6 +130,34 @@
       <p id="form-error" role="alert"></p>
       <button class="submit-button" type="submit"><span data-i18n="dialog.submit">留下余光</span> <span>↗</span></button>
     </form>
+  </dialog>
+
+  <div id="capture-flash" class="capture-flash" hidden aria-hidden="true"></div>
+
+  <dialog id="share-dialog" class="share-shot" aria-labelledby="share-title">
+    <div class="share-shot__inner">
+      <button class="share-shot__close" data-close aria-label="关闭" data-i18n-attrs="aria-label:dialog.close">×</button>
+      <h2 id="share-title" class="sr-only" data-i18n="share.pageTitle">分享你的余光</h2>
+      <div class="share-shot__frame">
+        <img id="share-preview-img" alt="" title="点击查看原图" data-i18n-attrs="alt:share.previewAlt|title:share.viewFull" hidden>
+        <div id="share-actions" class="share-shot__actions" hidden>
+          <button id="share-x" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            <span data-i18n="share.shareToX">分享到 X</span>
+          </button>
+          <button id="share-copy" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span data-i18n="share.copy">复制</span>
+          </button>
+          <button id="share-download" type="button">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <span data-i18n="share.download">下载</span>
+          </button>
+        </div>
+      </div>
+      <p class="share-note" data-i18n="share.xHint">分享图会自动复制到剪贴板，打开 X 后直接粘贴即可。</p>
+      <p id="share-feedback" class="share-feedback" role="status" aria-live="polite" hidden></p>
+    </div>
   </dialog>
 
   <dialog id="memory-dialog" aria-labelledby="memory-name">

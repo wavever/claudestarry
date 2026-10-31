@@ -4,7 +4,7 @@ import { today, dateToDay, DAY_MS, loadAccounts, validAccount, mergeAccounts, ST
 import { ParticleCounter } from './particle-counter.js';
 import { getSharedStarsConfig, latestCivilDate, SharedStarsClient } from './shared-stars.js';
 import {applyDocumentLocale,normalizeLocale,persistLocale,resolveLocale,safeStorage,translate} from './i18n.js';
-import { createStarShare } from './share.js';
+import { createCardsPageShare } from './share.js';
 import { OWN_IDS_STORAGE_KEY, isOwnStar, loadOwnIds, nextOwnStarIndex, ownStarIndices, rememberOwnId } from './own-stars.js';
 import { FallbackUniverse, supportsWebGL2 } from './fallback-universe.js';
 
@@ -23,14 +23,16 @@ let sharedStars = null;
 let submissionInFlight = false;
 const meteorQueue=[];
 const queuedMeteorIds=new Set();
-const shareImageJobs=new Map();
 const browserStorage=safeStorage(()=>localStorage);
 const CARD_SWITCH_FADE_MS = 180;
 clearLegacyConfig(browserStorage);
 let locale=resolveLocale({search:location.search,storage:browserStorage,languages:navigator.languages});
 applyDocumentLocale(locale);
 let config=defaultConfigForLocale(locale);
-const SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || location.origin + location.pathname;
+const PUBLIC_SITE_URL = 'https://claudestarry.pages.dev/';
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+const SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL
+  || (LOCAL_HOSTS.has(location.hostname) ? PUBLIC_SITE_URL : location.origin + location.pathname);
 const sharedConfig=getSharedStarsConfig(import.meta.env);
 const t=(key,values)=>translate(locale,key,values);
 const formatNumber=value=>new Intl.NumberFormat(locale==='zh-CN'?'zh-CN':'en-US').format(value);
@@ -129,6 +131,8 @@ function updateViewControls(){
     ownButton.hidden=!entryControlsReady||ownCount===0;
     ownButton.disabled=!ready||!universe||!entryControlsReady||ownCount===0||!ownStarVisible||meteorBusy();
   }
+  const shareButton=$('#share-page');
+  if(shareButton)shareButton.disabled=!ready||!universe||!entryControlsReady;
   if(!ready || !universe || !entryControlsReady)return;
   if(entryControlsReady){
     $('#create').disabled=meteorBusy();
@@ -311,7 +315,6 @@ function presentCard(index,{arrival=false,preserveCardView=false,fadeIn=false}={
   // transparent before beginning its fade-in.
   if(fadeIn)void card.offsetWidth;
   setCardTransitionVisualState(false);
-  warmStarShare(account);
 }
 
 function showCard(index,options={}){
@@ -791,327 +794,387 @@ $('#star-form').addEventListener('submit', async event => {
 
 addEventListener('resize', hideStarTip);
 
-async function captureGalaxyCardBlob(account) {
-  if (!universe || !account) return null;
-  const index = accounts.findIndex(a => a.id === account.id);
-  const point = index >= 0 ? universe.project(index) : null;
-  const card = $('#star-card');
-  const cardW = card.offsetWidth || 280;
-  const cardH = card.offsetHeight || 250;
+let shareFlow=null;
+let shareFlowToken=0;
+let shareRevealTimer=null;
+let shareFlashTimer=null;
+const SHARE_REVEAL_MS=1300;
 
-  const dataUrl = universe.captureFrame({ preserveView: true });
-  const img = new Image();
-  await new Promise((resolve, reject) => {
-    img.onload = resolve;
-    img.onerror = reject;
-    img.src = dataUrl;
+function currentShareEntries(){
+  const own=currentOwnStarIndices()
+    .map(index=>({index,account:accounts[index]}))
+    .filter(item=>item.account);
+  // Newly added stars get the next catalog number, so newest-first keeps the
+  // share cards in sync with what the visitor just added (up to three).
+  own.sort((a,b)=>(Number(b.account.catalogNumber)||0)-(Number(a.account.catalogNumber)||0));
+  // Prefer stars that are actually on screen so every visible card can carry
+  // its connector; fill the remaining slots with the newest off-screen ones.
+  // Keep newest-first order even when a star is off-screen: a just-added
+  // record must not be pushed behind older visible stars.
+  return own;
+}
+
+function shareCardBounds(){
+  const mobile=innerWidth<700;
+  const max=Math.min(
+    Math.round(Math.min(mobile?190:300,Math.max(mobile?160:200,innerWidth*0.22))),
+    Math.floor((innerWidth-48)/2),
+  );
+  return {min:Math.min(max,mobile?128:150),max};
+}
+
+function createShareMiniCard(account,{min,max}){
+  const catalog=catalogDesignation(account);
+  const node=document.createElement('article');
+  node.className='share-mini-card';
+  node.style.minWidth=`${min}px`;
+  node.style.maxWidth=`${max}px`;
+  node.style.width='max-content';
+  const catalogNode=document.createElement('p');
+  catalogNode.className='share-mini-card__catalog';
+  catalogNode.textContent=catalog;
+  const name=document.createElement('h3');
+  name.textContent=account.alias||catalog;
+  node.append(catalogNode,name);
+
+  const started=account.started?account.started.replaceAll('-','/'):'';
+  const disabled=account.date?account.date.replaceAll('-','/'):'';
+  if(started||disabled){
+    const row=document.createElement('div');
+    row.className='share-mini-card__dates';
+    const label=document.createElement('span');
+    label.textContent=started?t('card.onlinePeriod'):t('card.disabledDate');
+    const value=document.createElement('strong');
+    value.textContent=started&&disabled?`${started}\n— ${disabled}`:started||disabled;
+    row.append(label,value);
+    node.append(row);
+  }
+
+  if(account.message?.trim()){
+    const story=document.createElement('p');
+    story.className='share-mini-card__story';
+    story.textContent=account.message.trim();
+    node.append(story);
+  }
+  return node;
+}
+
+function addShareLine(item,svg,delay){
+  if(!item.point?.visible)return;
+  const ns='http://www.w3.org/2000/svg';
+  const startX=Math.max(8,Math.min(innerWidth-8,item.point.x));
+  const startY=Math.max(8,Math.min(innerHeight-8,item.point.y));
+  const endX=item.side==='left'?item.x+item.w:item.x;
+  const endY=Math.max(item.y+24,Math.min(item.y+item.h-24,item.point.y));
+  const gap=Math.max(48,Math.abs(endX-startX)*0.34);
+  const bend=Math.min(92,Math.max(24,Math.abs(endY-startY)*0.28+gap*0.14));
+  const direction=endX>=startX?1:-1;
+  const path=document.createElementNS(ns,'path');
+  path.setAttribute('d',`M ${startX} ${startY} C ${startX+gap*direction} ${startY+bend}, ${endX-gap*direction} ${endY-bend}, ${endX} ${endY}`);
+  path.setAttribute('pathLength','1');
+  path.setAttribute('class','share-line');
+  path.style.setProperty('--line-delay',`${delay}ms`);
+  svg.append(path);
+
+  const dot=document.createElementNS(ns,'circle');
+  dot.setAttribute('cx',startX);
+  dot.setAttribute('cy',startY);
+  dot.setAttribute('r','2.2');
+  dot.setAttribute('class','share-anchor-dot');
+  dot.style.setProperty('--line-delay',`${delay}ms`);
+  svg.append(dot);
+}
+
+function buildShareLayout(entries){
+  const layer=$('#share-cards-layer');
+  const svg=$('#share-cards-lines');
+  if(!layer||!svg)return [];
+  layer.hidden=false;
+  layer.classList.remove('is-revealed');
+  svg.replaceChildren();
+  layer.querySelectorAll('.share-mini-card').forEach(node=>node.remove());
+  if(!entries.length)return [];
+
+  const bounds=shareCardBounds();
+  const center=universe?.projectPoint(0,0,0).x??innerWidth/2;
+  const points=entries.map((item,index)=>({
+    ...item,
+    point:universe?.project(item.index)??{x:0,y:0,visible:false},
+  }));
+
+  const nodes=points.map(item=>{
+    const node=createShareMiniCard(item.account,bounds);
+    layer.append(node);
+    return node;
+  });
+  const widths=nodes.map(node=>{
+    const width=Math.max(bounds.min,Math.min(bounds.max,Math.round(node.getBoundingClientRect().width)));
+    node.style.width=`${width}px`;
+    return width;
+  });
+  const heights=nodes.map(node=>node.offsetHeight||160);
+
+  const top=Math.max(100,Math.round(innerHeight*0.14));
+  const leftBottom=innerHeight-Math.max(24,Math.round(innerHeight*0.04));
+  const rightBottom=innerHeight-Math.max(180,Math.round(innerHeight*0.24));
+  const gap=12;
+
+  // Group each card by the side its star actually sits on, then place each
+  // group top-to-bottom in star-Y order. A card is never moved to the opposite
+  // side just to fill space; that was what made the connectors cross.
+  const groups={left:[],right:[]};
+  points.forEach((item,index)=>{
+    const side=Number.isFinite(item.point.x)
+      ? item.point.x>=center?'right':'left'
+      : index%2?'right':'left';
+    groups[side].push({item,index});
   });
 
-  const width = img.width;
-  const height = img.height;
-  const scale = width / Math.max(1, window.innerWidth);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-
-  // 1. WebGL galaxy background
-  ctx.drawImage(img, 0, 0);
-
-  // 2. Connecting line with obtuse bend
-  const pt = (point && Number.isFinite(point.x) && Number.isFinite(point.y))
-    ? {
-        x: Math.max(20, Math.min(innerWidth - 20, point.x)),
-        y: Math.max(20, Math.min(innerHeight - 20, point.y))
-      }
-    : { x: Math.round(innerWidth * 0.5), y: Math.round(innerHeight * 0.5) };
-
-  const placement = computeCardPlacement(pt, cardW, cardH);
-  const sx = placement.sx * scale;
-  const sy = placement.sy * scale;
-  const ex = placement.elbowX * scale;
-  const ey = placement.elbowY * scale;
-  const tx = placement.targetEdgeX * scale;
-
-  ctx.save();
-  ctx.strokeStyle = 'rgba(225, 205, 175, 0.42)';
-  ctx.lineWidth = 1 * scale;
-  ctx.setLineDash([4 * scale, 4 * scale]);
-  ctx.beginPath();
-  ctx.moveTo(sx, sy);
-  ctx.lineTo(ex, ey);
-  ctx.lineTo(tx, ey);
-  ctx.stroke();
-
-  ctx.setLineDash([]);
-  // Elbow and card junction dots
-  ctx.fillStyle = 'rgba(235, 220, 195, 0.75)';
-  ctx.beginPath(); ctx.arc(ex, ey, 2 * scale, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(tx, ey, 2 * scale, 0, Math.PI * 2); ctx.fill();
-
-  // 指引圆环 (Indicator Ring)
-  ctx.strokeStyle = 'rgba(225, 205, 175, 0.55)';
-  ctx.lineWidth = 1 * scale;
-  ctx.shadowColor = 'rgba(206, 109, 77, 0.4)';
-  ctx.shadowBlur = 8 * scale;
-  ctx.beginPath();
-  ctx.arc(sx, sy, 12 * scale, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // 粒子的发光效果 (Glowing Particle Halo)
-  const glow = ctx.createRadialGradient(sx, sy, 0, sx, sy, 16 * scale);
-  glow.addColorStop(0, 'rgba(255, 248, 238, 0.95)');
-  glow.addColorStop(0.25, 'rgba(238, 172, 144, 0.65)');
-  glow.addColorStop(0.55, 'rgba(206, 109, 77, 0.3)');
-  glow.addColorStop(1, 'rgba(206, 109, 77, 0)');
-  ctx.fillStyle = glow;
-  ctx.shadowBlur = 0;
-  ctx.beginPath();
-  ctx.arc(sx, sy, 16 * scale, 0, Math.PI * 2);
-  ctx.fill();
-
-  // 粒子高亮晶莹核心 (Bright Core)
-  ctx.fillStyle = '#ffffff';
-  ctx.shadowColor = 'rgba(255, 240, 220, 0.95)';
-  ctx.shadowBlur = 6 * scale;
-  ctx.beginPath();
-  ctx.arc(sx, sy, 2.5 * scale, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  // 3. Card
-  const cx = placement.cardX * scale;
-  const cy = placement.cardY * scale;
-  const cw = cardW * scale;
-  const ch = cardH * scale;
-  const r = 10 * scale;
-
-    ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
-    ctx.shadowBlur = 28 * scale;
-    ctx.shadowOffsetY = 10 * scale;
-
-    ctx.fillStyle = 'rgba(14, 13, 11, 0.93)';
-    ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(cx, cy, cw, ch, r);
-    else ctx.rect(cx, cy, cw, ch);
-    ctx.fill();
-
-    ctx.strokeStyle = 'rgba(218, 200, 167, 0.35)';
-    ctx.lineWidth = 1 * scale;
-    ctx.stroke();
-    ctx.restore();
-
-    const padX = 20 * scale;
-    const startX = cx + padX;
-    const maxTextW = cw - padX * 2;
-    let curY = cy + 28 * scale;
-
-    ctx.fillStyle = '#99866d';
-    ctx.font = `600 ${8.5 * scale}px "SFMono-Regular", Consolas, monospace`;
-    ctx.fillText(t('share.record'), startX, curY);
-    curY += 24 * scale;
-
-    // Name
-    ctx.fillStyle = '#eee5d8';
-    ctx.font = `500 ${18 * scale}px "Songti SC", Georgia, serif`;
-    ctx.fillText(account.alias || '', startX, curY);
-    curY += 18 * scale;
-
-    // Catalog
-    ctx.fillStyle = '#a89882';
-    ctx.font = `${10 * scale}px "SFMono-Regular", Consolas, monospace`;
-    ctx.fillText(catalogDesignation(account), startX, curY);
-    curY += 20 * scale;
-
-    if (account.started || account.date) {
-      ctx.fillStyle = '#7a756d';
-      ctx.font = `${9.5 * scale}px -apple-system, sans-serif`;
-      const dateText = account.started
-        ? `${t('card.onlinePeriod')}: ${account.started.replaceAll('-', ' / ')} — ${account.date.replaceAll('-', ' / ')}`
-        : t('card.disabledOn',{date:account.date.replaceAll('-', ' / ')});
-      ctx.fillText(dateText, startX, curY);
-      curY += 20 * scale;
+  const layout=[];
+  for(const side of ['left','right']){
+    const bottom=side==='left'?leftBottom:rightBottom;
+    let cursor=top;
+    const group=groups[side].sort((a,b)=>(a.item.point.y||0)-(b.item.point.y||0));
+    for(const entry of group){
+      const {item,index}=entry;
+      if(cursor+heights[index]>bottom)continue;
+      const width=widths[index];
+      const placed={
+        ...item,
+        node:nodes[index],
+        side,
+        w:width,
+        h:heights[index],
+        height:heights[index],
+        x:side==='left'?16:innerWidth-16-width,
+        y:cursor,
+        delay:Math.round(Math.random()*120),
+      };
+      cursor+=heights[index]+gap;
+      placed.node.style.left=`${placed.x}px`;
+      placed.node.style.top=`${placed.y}px`;
+      placed.node.style.setProperty('--card-delay',`${placed.delay}ms`);
+      addShareLine(placed,svg,placed.delay);
+      layout.push(placed);
     }
+  }
 
-    // Story
-    if (account.message && account.message.trim()) {
-      ctx.fillStyle = '#ccc4b8';
-      ctx.font = `${11.5 * scale}px "Songti SC", Georgia, serif`;
-      const chars = Array.from(account.message.trim());
-      let line = '';
-      for (let n = 0; n < chars.length; n++) {
-        const testLine = line + chars[n];
-        if (ctx.measureText(testLine).width > maxTextW && n > 0) {
-          ctx.fillText(line, startX, curY);
-          line = chars[n];
-          curY += 18 * scale;
-        } else {
-          line = testLine;
-        }
-      }
-      ctx.fillText(line, startX, curY);
-    }
-
-  ctx.save();
-  ctx.fillStyle = 'rgba(235, 225, 210, 0.7)';
-  ctx.font = `500 ${12 * scale}px -apple-system, sans-serif`;
-  ctx.fillText(t('brand.title'), 24 * scale, 36 * scale);
-  ctx.fillStyle = '#ce6d4d';
-  ctx.font = `${9 * scale}px -apple-system, sans-serif`;
-  ctx.fillText(SITE_URL, 24 * scale, 50 * scale);
-  ctx.restore();
-
-  return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-}
-function shareImageKey(account) {
-  return [locale, account.id, account.alias, account.started, account.date, account.message, ...(account.position || [])].join('\u0001');
-}
-
-function shareText(account) {
-  return t('share.postText', { alias: account.alias || catalogDesignation(account), url: SITE_URL });
-}
-
-function getStarShareFile(account) {
-  const key = shareImageKey(account);
-  const existing = shareImageJobs.get(key);
-  if (existing) return existing;
-  let snapshot = null;
-  try {
-    // Export the unobstructed galaxy, not the responsive card overlay. The
-    // fixed portrait compositor below owns all text and framing.
-    snapshot = universe?.captureFrame() || null;
-  } catch {}
-  const task = createStarShare({
-    account,
-    designation: catalogDesignation(account),
-    snapshot,
-    siteUrl: SITE_URL,
-    slogan: config.slogan,
-    locale,
+  points.forEach((item,index)=>{
+    if(!layout.some(placed=>placed.node===nodes[index]))nodes[index].remove();
   });
-  shareImageJobs.set(key, task);
-  task.catch(() => shareImageJobs.delete(key));
-  return task;
+
+  layer.classList.add('is-revealed');
+  return layout;
+}
+function resetShareFlow(){
+  shareFlowToken++;
+  clearTimeout(shareRevealTimer);
+  clearTimeout(shareFlashTimer);
+  shareRevealTimer=null;
+  shareFlashTimer=null;
+  if(shareFlow?.previewUrl)URL.revokeObjectURL(shareFlow.previewUrl);
+  shareFlow=null;
+  const layer=$('#share-cards-layer');
+  if(layer){
+    layer.hidden=true;
+    layer.classList.remove('is-revealed');
+    layer.querySelectorAll('.share-mini-card').forEach(node=>node.remove());
+  }
+  const svg=$('#share-cards-lines');
+  if(svg)svg.replaceChildren();
+  const flash=$('#capture-flash');
+  if(flash){flash.hidden=true;flash.classList.remove('is-active');}
+  const image=$('#share-preview-img');
+  if(image){image.hidden=true;image.removeAttribute('src');}
+  const actions=$('#share-actions');
+  if(actions)actions.hidden=true;
+  const note=$('.share-note');
+  if(note)note.textContent=t('share.xHint');
+  setShareFeedback('');
+  setShareButtonsEnabled(false);
 }
 
-let shareWarmTimer=null;
-function warmStarShare(account) {
-  // Rendering the share image is a synchronous frame capture. Starting it while
-  // the camera is still easing into the card view stalls the transition, so the
-  // prefetch waits until the camera and the frustum offset have both settled.
-  clearTimeout(shareWarmTimer);
-  const waitForSettle = () => {
-    if (cardId !== account.id || !universe) return;
-    if (universe.focusTween || universe.viewOffsetTween) {
-      shareWarmTimer = setTimeout(waitForSettle, 140);
+function setShareButtonsEnabled(enabled){
+  for(const id of ['#share-copy','#share-download','#share-x']){
+    const button=$(id);
+    if(button)button.disabled=!enabled;
+  }
+}
+
+function setShareFeedback(message,{error=false}={}){
+  const node=$('#share-feedback');
+  if(!node)return;
+  node.hidden=!message;
+  node.textContent=message||'';
+  node.classList.toggle('is-error',Boolean(error));
+}
+
+async function captureShareScreenshot(token){
+  if(!shareFlow||shareFlow.token!==token)return;
+  let snapshot=null;
+  try{snapshot=universe?.captureFrame({preserveView:true})||null;}catch{}
+  try{
+    const file=await createCardsPageShare({
+      snapshot,
+      cards:shareFlow.layout.map(item=>({
+        account:item.account,
+        designation:catalogDesignation(item.account),
+        x:item.x,
+        y:item.y,
+        w:item.w,
+        h:item.height,
+        side:item.side,
+        // Re-project at capture time: closing the on-page card may still be
+        // easing the camera back, and the screenshot is taken from the live view.
+        star:universe?.project(item.index)??item.point,
+      })),
+      viewport:{width:innerWidth,height:innerHeight},
+      countText:t('share.screenshotCount',{count:shareFlow.layout.length}),
+      siteUrl:SITE_URL,
+      slogan:config.slogan,
+      locale,
+    });
+    if(!shareFlow||shareFlow.token!==token)return;
+    shareFlow.file=file;
+    shareFlow.autoCopied=false;
+    shareFlow.autoCopy=copyShareFile(file).then(()=>{
+      if(shareFlow?.file===file)shareFlow.autoCopied=true;
+    }).catch(()=>{
+      if(shareFlow?.file===file)shareFlow.autoCopied=false;
+    });
+    flashCapture(token);
+  }catch(error){
+    console.error(error);
+    resetShareFlow();
+    toast(t('share.imageFailed'));
+  }
+}
+
+function flashCapture(token){
+  const flash=$('#capture-flash');
+  if(!flash)return;
+  flash.hidden=false;
+  flash.classList.remove('is-active');
+  void flash.offsetWidth;
+  flash.classList.add('is-active');
+  clearTimeout(shareFlashTimer);
+  shareFlashTimer=setTimeout(()=>{
+    flash.classList.remove('is-active');
+    flash.hidden=true;
+    if(!shareFlow||shareFlow.token!==token)return;
+    showShareShot(token);
+  },620);
+}
+
+async function showShareShot(token){
+  if(!shareFlow?.file)return;
+  const image=$('#share-preview-img');
+  const previewUrl=URL.createObjectURL(shareFlow.file);
+  shareFlow.previewUrl=previewUrl;
+  image.hidden=false;
+  image.src=previewUrl;
+  try{await image.decode?.();}catch{}
+  if(!shareFlow||shareFlow.token!==token)return;
+  const layer=$('#share-cards-layer');
+  if(layer){layer.hidden=true;layer.classList.remove('is-revealed');}
+  if(shareFlow.autoCopy){
+    await Promise.race([
+      shareFlow.autoCopy,
+      new Promise(resolve=>setTimeout(resolve,700)),
+    ]).catch(()=>{});
+  }
+  const note=$('.share-note');
+  if(note)note.textContent=t(shareFlow.autoCopied?'share.copiedForX':'share.copyOnX');
+  $('#share-actions').hidden=false;
+  setShareButtonsEnabled(true);
+  $('#share-dialog').showModal();
+}
+
+function startShareReveal(){
+  if(!ready||!entryControlsReady||!universe||shareFlow)return;
+  const wasCardOpen=Boolean(cardId)||Boolean(universe.cardView);
+  closeCard();
+  hideStarTip();
+  const token=++shareFlowToken;
+  shareFlow={token,layout:[],file:null,previewUrl:null};
+  clearTimeout(shareRevealTimer);
+  const needsGlobal=wasCardOpen||!(universe.isHomeView?.()??true);
+  if(needsGlobal&&typeof universe.reset==='function')universe.reset();
+  const started=performance.now();
+  const begin=()=>{
+    if(!shareFlow||shareFlow.token!==token)return;
+    const home=universe.isHomeView?universe.isHomeView():true;
+    const settled=home&&!universe.focusTween&&!universe.viewOffsetTween;
+    if(!settled&&performance.now()-started<3200){
+      requestAnimationFrame(begin);
       return;
     }
-    const warm = () => {
-      if (cardId === account.id) void getStarShareFile(account).catch(() => {});
-    };
-    if ('requestIdleCallback' in window) window.requestIdleCallback(warm, { timeout: 1200 });
-    else shareWarmTimer = setTimeout(warm, 180);
+    const layout=buildShareLayout(currentShareEntries());
+    if(!shareFlow||shareFlow.token!==token)return;
+    shareFlow.layout=layout;
+    shareRevealTimer=setTimeout(()=>captureShareScreenshot(token),layout.length?SHARE_REVEAL_MS:350);
   };
-  shareWarmTimer = setTimeout(waitForSettle, 140);
+  requestAnimationFrame(begin);
 }
 
-function downloadStarShare(file) {
-  const url = URL.createObjectURL(file);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = file.name || `afterlight-${catalogDesignation({ catalogNumber: 0 })}.png`;
+function sharePostText(){
+  const entries=shareFlow?.layout||[];
+  const account=entries.length===1?entries[0].account:null;
+  return account
+    ?t('share.postText',{alias:account.alias||catalogDesignation(account),url:SITE_URL})
+    :t('share.tweet',{url:SITE_URL});
+}
+
+function downloadShareFile(file){
+  const url=URL.createObjectURL(file);
+  const link=document.createElement('a');
+  link.href=url;
+  link.download=file.name||'claude-starry-share.png';
   link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 15000);
+  window.setTimeout(()=>URL.revokeObjectURL(url),15000);
 }
 
-function supportsFileShare(file) {
-  try {
-    return Boolean(navigator.share && navigator.canShare?.({ files: [file] }));
-  } catch {
-    return false;
-  }
+async function copyShareFile(file){
+  if(!navigator.clipboard?.write||typeof ClipboardItem==='undefined')throw new Error(t('share.imageCopyFailed'));
+  await navigator.clipboard.write([new ClipboardItem({'image/png':file})]);
 }
 
-async function runShareAction(button, action) {
-  if (button.disabled) return;
-  button.disabled = true;
-  button.setAttribute('aria-busy', 'true');
-  try {
-    await action();
-  } finally {
-    button.disabled = false;
-    button.removeAttribute('aria-busy');
-  }
-}
+$('#share-dialog').addEventListener('close',()=>{resetShareFlow();});
+
+$('#share-preview-img').addEventListener('click',()=>{
+  if(shareFlow?.previewUrl)window.open(shareFlow.previewUrl,'_blank','noopener');
+});
 
 $('#card-close').addEventListener('click', closeCard);
 
-$('#card-share').addEventListener('click', async event => {
-  const account = accounts.find(a => a.id === cardId);
-  if (!account) return;
-  await runShareAction(event.currentTarget, async () => {
-    try {
-      toast(t('share.sharePreparing'));
-      const file = await getStarShareFile(account);
-      if (supportsFileShare(file)) {
-        try {
-          await navigator.share({
-            title: t('share.nativeTitle', { alias: account.alias || catalogDesignation(account) }),
-            text: shareText(account),
-            files: [file],
-          });
-          toast(t('share.shareOpened'));
-          return;
-        } catch (error) {
-          if (error?.name === 'AbortError') return;
-        }
-      }
-      downloadStarShare(file);
-      toast(t('share.shareDownloaded'));
-    } catch {
-      toast(t('share.imageFailed'));
-    }
-  });
-});
+$('#share-page').addEventListener('click',startShareReveal);
 
-$('#card-twitter').addEventListener('click', () => {
-  const account = accounts.find(a => a.id === cardId);
-  if (!account) return;
-  // X web intents can prefill text but cannot attach a local File. Keep this
-  // synchronous so browser popup protection cannot swallow the user action.
-  const twitterUrl = `https://x.com/intent/post?text=${encodeURIComponent(shareText(account))}`;
-  window.open(twitterUrl, '_blank', 'noopener,noreferrer,width=580,height=480');
-  toast(t('share.xOpened'));
-});
-
-$('#card-copy-img').addEventListener('click', async () => {
-  const account = accounts.find(a => a.id === cardId);
-  if (!account) return;
-  try {
-    toast(t('share.imagePreparing'));
-    const file = await getStarShareFile(account);
-    if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error(t('share.imageCopyFailed'));
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': file })]);
-    toast(t('share.imageCopied'));
-  } catch (err) {
-    toast(t('share.imageCopyFailed'));
+$('#share-copy').addEventListener('click',async()=>{
+  if(!shareFlow?.file)return;
+  try{
+    await copyShareFile(shareFlow.file);
+    setShareFeedback(t('share.imageCopied'));
+  }catch{
+    setShareFeedback(t('share.imageCopyFailed'),{error:true});
   }
 });
 
-$('#card-download-img').addEventListener('click', async () => {
-  const account = accounts.find(a => a.id === cardId);
-  if (!account) return;
-  try {
-    toast(t('share.imagePreparing'));
-    const file = await getStarShareFile(account);
-    downloadStarShare(file);
-    toast(t('share.imageDownloaded'));
-  } catch (err) {
-    toast(t('share.imageDownloadFailed'));
-  }
+$('#share-download').addEventListener('click',()=>{
+  if(!shareFlow?.file)return;
+  downloadShareFile(shareFlow.file);
+  setShareFeedback(t('share.imageDownloaded'));
 });
+
+$('#share-x').addEventListener('click',()=>{
+  if(!shareFlow?.file)return;
+  const copyPromise=copyShareFile(shareFlow.file);
+  const twitterUrl=`https://x.com/intent/post?text=${encodeURIComponent(sharePostText())}`;
+  window.open(twitterUrl,'_blank','noopener,noreferrer,width=580,height=480');
+  copyPromise
+    .then(()=>setShareFeedback(t('share.xImageCopied')))
+    .catch(()=>setShareFeedback(t('share.xImageCopyFailed'),{error:true}));
+});
+
 addEventListener('resize',()=>{
   if(!cardId)return;
   updateCardPosition();
@@ -1133,7 +1196,6 @@ function setLocale(nextLocale){
   if(!normalized||normalized===locale)return;
   locale=normalized;
   persistLocale(browserStorage,locale);
-  shareImageJobs.clear();
   config.slogan=localizeDefaultSlogan(config.slogan,locale,import.meta.env.DEV);
   applyDocumentLocale(locale);
   window.__afterlightEntryBoot?.setLocale(locale);

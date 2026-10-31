@@ -5,7 +5,7 @@ export const EASINGS = ['linear','smoothstep','easeInQuad','easeInCubic','easeOu
 export const ANIMATION_MODES = ['full','slogan-freeze','slogan-loop','nebula-loop','nebula-freeze'];
 export const DEFAULT_CONFIG = Object.freeze({
   animationMode:'full',
-  slogan:'被停用的 Claude 账号没有消失，\n只是从此不再回应，化作了星河里的一点光',
+  slogan:'被停用的 Claude 账号没有消失，\n只是从此不再回应，但仍留有余光',
   fontFamily:'"PingFang SC", "Microsoft YaHei", sans-serif',
   fontSize:54,mobileFontSize:34,fontWeight:500,textParticleSize:1.3,textSampleStep:3.0,
   lineHeight:80,mobileLineHeight:52,

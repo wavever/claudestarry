@@ -6,10 +6,13 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { claudeLogoPosition } from './claude-field.js';
 import { accountStarSizeScale, dateToDay, HALF_LIFE, MIN_LIGHT, seededRandom, galaxyPosition, hashId, starProfile } from './model.js';
 
-const ACCOUNT_REVEAL_DURATION = 1.2;
+const ACCOUNT_REVEAL_DURATION = 2.0;
+const ACCOUNT_REVEAL_MAX_DELAY = 0.8;
+const ACCOUNT_REVEAL_FADE = 0.2;
 const STAR_PICK_MIN_LIGHT = .08;
-export const ACCOUNT_STAR_MIN_CSS_DIAMETER = 5.5;
-export const ACCOUNT_STAR_MAX_CSS_DIAMETER = 9;
+export const ACCOUNT_STAR_MIN_CSS_DIAMETER = 2.2;
+export const ACCOUNT_STAR_MAX_CSS_DIAMETER = 5.5;
+export const ACCOUNT_STAR_GLOW_SCALE = 2.6;
 const ACCOUNT_STAR_MIN_DEPTH_FACTOR = .88;
 const ACCOUNT_STAR_MAX_DEPTH_FACTOR = 1.12;
 const ACCOUNT_STAR_SIZE_BREATH = .035;
@@ -25,10 +28,9 @@ export function glslFloatLiteral(value) {
   return /[.e]/i.test(literal) ? literal : `${literal}.0`;
 }
 
-// gl_PointSize is measured in framebuffer pixels. Keep the public range in
-// CSS pixels, then scale it by Three's renderer pixel ratio in the shader.
-// The clipped point-sprite disc is the measured diameter; its inner glow is
-// intentionally a brightness gradient inside that disc, not extra geometry.
+// gl_PointSize is measured in framebuffer pixels. The CSS diameter describes
+// the bright core of the star; the point sprite is enlarged by a glow factor
+// so every user star can carry a soft halo without extra geometry.
 export function accountStarCssDiameter(scale, depth, referenceDepth, twinkle = 0, motion = 1) {
   const normalizedScale = Math.min(1, Math.max(0, Number.isFinite(scale) ? scale : 0));
   const safeDepth = Math.max(.01, Number.isFinite(depth) ? depth : .01);
@@ -42,7 +44,7 @@ export function accountStarCssDiameter(scale, depth, referenceDepth, twinkle = 0
 }
 
 export function accountStarFramebufferDiameter(cssDiameter, pixelRatio = 1) {
-  return cssDiameter * Math.max(.01, Number.isFinite(pixelRatio) ? pixelRatio : 1);
+  return cssDiameter * ACCOUNT_STAR_GLOW_SCALE * Math.max(.01, Number.isFinite(pixelRatio) ? pixelRatio : 1);
 }
 
 const starVertex = `
@@ -55,6 +57,10 @@ attribute float aPhase;
 attribute float aSpeed;
 attribute float aArrival;
 attribute float aEntryReveal;
+attribute float aEntryDelay;
+attribute float aBreathPhase;
+attribute float aBreathSpeed;
+attribute float aBreathEnabled;
 uniform float uDay;
 uniform float uTime;
 uniform float uDpr;
@@ -67,16 +73,28 @@ uniform float uReferenceDepth;
 varying float vLight;
 varying float vScale;
 varying float vPulse;
+varying float vBreath;
+varying float vBreathEnabled;
+varying float vCoreFraction;
 varying float vNearFade;
 void main() {
-  // Meteor landings bypass the entry fade; initial stars wait for the nebula.
-  vLight = aVisible * mix(1.0, uAccountReveal, aEntryReveal);
+  // Account stars begin as the nebula starts forming and finish inside the
+  // same two-second window, each with its own stable random start.
+  float entryFade = smoothstep(aEntryDelay, aEntryDelay + ${glslFloatLiteral(ACCOUNT_REVEAL_FADE)}, uAccountReveal);
+  vLight = aVisible * mix(1.0, entryFade, aEntryReveal);
   vScale = aScale;
 
   // Two incommensurate waves make each stable ID breathe independently.
   float tw = sin(uTime * aSpeed + aPhase) * 0.62 + sin(uTime * (aSpeed * 1.618 + 0.17) + aPhase * 1.73) * 0.38;
   float amplitude = 0.18 * uMotion;
-  vPulse = 1.0 + tw * amplitude;
+  vPulse = 1.0 + tw * amplitude * aBreathEnabled;
+
+  // A slower, independent breath drives the halo. Every star gets a stable
+  // random phase and speed, so the glow drifts in and out of sync naturally.
+  float breath = sin(uTime * aBreathSpeed + aBreathPhase) * 0.58
+    + sin(uTime * (aBreathSpeed * 0.43 + 0.11) + aBreathPhase * 1.7) * 0.42;
+  vBreath = breath * uMotion;
+  vBreathEnabled = aBreathEnabled;
 
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   float depth = max(-mv.z, .01);
@@ -84,29 +102,42 @@ void main() {
   gl_Position = projectionMatrix * mv;
 
   // Preserve a little relative-depth parallax without letting zoom or DPR
-  // break the required 5.5px–9px CSS visual diameter.
+  // break the 2.2px–5.5px bright-core diameter. The sprite includes the halo.
   float depthFactor = clamp(uReferenceDepth / depth, ${glslFloatLiteral(ACCOUNT_STAR_MIN_DEPTH_FACTOR)}, ${glslFloatLiteral(ACCOUNT_STAR_MAX_DEPTH_FACTOR)});
-  float sizePulse = 1.0 + clamp(tw, -1.0, 1.0) * ${glslFloatLiteral(ACCOUNT_STAR_SIZE_BREATH)} * uMotion;
+  float sizePulse = 1.0 + clamp(tw, -1.0, 1.0) * ${glslFloatLiteral(ACCOUNT_STAR_SIZE_BREATH)} * aBreathEnabled * uMotion;
+  sizePulse *= 1.0 + clamp(breath, -1.0, 1.0) * 0.06 * aBreathEnabled * uMotion;
   float cssDiameter = clamp((${glslFloatLiteral(ACCOUNT_STAR_MIN_CSS_DIAMETER)} + clamp(aScale, 0.0, 1.0) * ${glslFloatLiteral(ACCOUNT_STAR_MAX_CSS_DIAMETER - ACCOUNT_STAR_MIN_CSS_DIAMETER)}) * depthFactor * sizePulse, ${glslFloatLiteral(ACCOUNT_STAR_MIN_CSS_DIAMETER)}, ${glslFloatLiteral(ACCOUNT_STAR_MAX_CSS_DIAMETER)});
-  gl_PointSize = cssDiameter * uDpr;
+  float spriteCss = cssDiameter * ${glslFloatLiteral(ACCOUNT_STAR_GLOW_SCALE)};
+  spriteCss = mix(spriteCss, max(spriteCss * 1.2, 17.0), aBreathEnabled);
+  spriteCss *= 1.0 + clamp(breath, -1.0, 1.0) * 0.06 * aBreathEnabled * uMotion;
+  vCoreFraction = cssDiameter / spriteCss;
+  gl_PointSize = spriteCss * uDpr;
 }`;
 const starFragment = `
 varying float vLight;
 varying float vScale;
 varying float vPulse;
+varying float vBreath;
+varying float vBreathEnabled;
+varying float vCoreFraction;
 varying float vNearFade;
 void main() {
   vec2 q = gl_PointCoord - 0.5;
-  float r2 = dot(q, q);
-  if(r2 > 0.25 || vLight <= 0.001) discard;
+  float radius = length(q) * 2.0;
+  if(radius > 1.0 || vLight <= 0.001) discard;
 
-  // 保持与其他粒子一致的自然圆形分布与微弱发光
-  float core = exp(-r2 * 55.0);
-  float faintGlow = 0.08 * exp(-r2 * 10.0);
-  float glow = core + faintGlow;
+  // The sprite is larger than the bright core so the halo fades out naturally.
+  float coreRadius = max(vCoreFraction, 0.03);
+  float coreT = radius / coreRadius;
+  float core = 1.0 - smoothstep(0.35, 1.0, coreT);
+  float hot = exp(-pow(coreT * 1.8, 2.0) * 2.2);
+  float breath = clamp(vBreath, -1.0, 1.0) * vBreathEnabled;
+  float breathing = 1.0 + breath * 0.18;
+  float halo = pow(max(0.0, 1.0 - radius), 3.2) * 0.19 * mix(1.0, 1.25, vBreathEnabled) * (1.0 + breath * 0.55);
+  float glow = core * 0.95 * breathing + hot * 0.55 * breathing + halo;
 
   // 纯净高亮恒星暖白
-  vec3 starColor = mix(vec3(0.96, 0.95, 0.92), vec3(1.0, 1.0, 1.0), core);
+  vec3 starColor = mix(vec3(0.96, 0.95, 0.92), vec3(1.0, 1.0, 1.0), clamp(hot, 0.0, 1.0));
 
   // The entry reveal fades light rather than only toggling visibility.
   float intensity = glow * vPulse * vNearFade * (1.10 + vScale * 0.25);
@@ -319,11 +350,13 @@ export class Universe {
   entryAccountReveal(entryTime){
     if(this.reduced)return 1;
     const c=this.config;
-    const nebulaEnd=c.lightDuration+c.textHold+c.textMorphDuration+c.logoHold+c.nebulaDuration;
-    return easeValue('easeOutCubic',(entryTime-nebulaEnd)/ACCOUNT_REVEAL_DURATION);
+    // The nebula starts forming here; account stars reveal in parallel from
+    // that instant, with per-star random starts finishing within two seconds.
+    const nebulaStart=c.lightDuration+c.textHold+c.textMorphDuration+c.logoHold;
+    return THREE.MathUtils.clamp((entryTime-nebulaStart)/ACCOUNT_REVEAL_DURATION,0,1);
   }
   loopAccountReveal(cycleElapsed){
-    return this.reduced?1:easeValue('easeOutCubic',(cycleElapsed-this.config.nebulaDuration)/ACCOUNT_REVEAL_DURATION);
+    return this.reduced?1:THREE.MathUtils.clamp(cycleElapsed/ACCOUNT_REVEAL_DURATION,0,1);
   }
   setAccountReveal(value){
     const reveal=THREE.MathUtils.clamp(Number.isFinite(value)?value:0,0,1);
@@ -347,20 +380,41 @@ export class Universe {
     const visible=attributes?.aVisible?.getX(index)??0;
     if(visible<=0)return false;
     const entryReveal=attributes?.aEntryReveal?.getX(index)??0;
-    const reveal=entryReveal>0?(this.accountReveal??this.uniforms?.uAccountReveal?.value??0):1;
+    if(entryReveal<=0)return true;
+    const progress=this.accountReveal??this.uniforms?.uAccountReveal?.value??0;
+    const delay=attributes?.aEntryDelay?.getX(index)??0;
+    const reveal=THREE.MathUtils.clamp((progress-delay)/ACCOUNT_REVEAL_FADE,0,1);
     return reveal>STAR_PICK_MIN_LIGHT;
+  }
+  accountBreathBudget(accountCount){
+    if(!accountCount || this.reduced)return 0;
+    const cores=(typeof navigator!=='undefined'&&navigator.hardwareConcurrency)||4;
+    const memory=(typeof navigator!=='undefined'&&navigator.deviceMemory)||4;
+    const dpr=(typeof window!=='undefined'&&window.devicePixelRatio)||1;
+    const mobile=(typeof window!=='undefined'&&window.innerWidth<700);
+    let ratio=.42;
+    if(cores>=8&&memory>=8&&!mobile&&dpr<=2)ratio=.55;
+    else if(mobile||cores<=4||memory<=4||dpr>2)ratio=.24;
+    return Math.max(1,Math.min(accountCount,Math.round(accountCount*ratio),mobile?12:36));
   }
   setAccounts(accounts) {
     const arrivalsById=new Map((this.accounts??[]).map((a,i)=>[a.id,this.stars?.geometry.attributes.aArrival?.getX(i)??-10000]));
     const stagedById=new Map((this.accounts??[]).map((a,i)=>[a.id,this.stars?.geometry.attributes.aEntryReveal?.getX(i)??(this.accountReveal<1?1:0)]));
     const activeMeteorId=this.meteor?.id;
     this.accounts=accounts;
-    const positions=[],born=[],scales=[],phases=[],speeds=[],peaks=[],halfLives=[],visible=[],arrivals=[],entryReveals=[];
+    const positions=[],born=[],scales=[],phases=[],speeds=[],breathPhases=[],breathSpeeds=[],breathEnabled=[],peaks=[],halfLives=[],visible=[],arrivals=[],entryReveals=[],entryDelays=[];
     const todayDay = dateToDay(new Date().toISOString().slice(0, 10));
+    const breathBudget = this.accountBreathBudget(accounts.length);
+    const breathPicks = new Set(accounts
+      .map((account, index) => ({ index, score: seededRandom(hashId(`${account.id}:breath-pick`))() }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, breathBudget)
+      .map(item => item.index));
 
-    accounts.forEach(a=>{
+    accounts.forEach((a,index)=>{
       arrivals.push(arrivalsById.get(a.id)??-10000);
       entryReveals.push(stagedById.get(a.id)??(this.accountReveal<1?1:0));
+      entryDelays.push(seededRandom(hashId(`${a.id}:entry-delay`))()*ACCOUNT_REVEAL_MAX_DELAY);
       peaks.push(1.0);
       halfLives.push(120);
       // Geometry is recreated on every merged record update. Preserve the
@@ -377,6 +431,9 @@ export class Universe {
       // realtime merges, and array reordering.
       phases.push(seededRandom(hashId(`${a.id}:twinkle-phase`))()*Math.PI*2);
       speeds.push(ACCOUNT_STAR_TWINKLE_SPEED_MIN + seededRandom(hashId(`${a.id}:twinkle-speed`))()*ACCOUNT_STAR_TWINKLE_SPEED_RANGE);
+      breathPhases.push(seededRandom(hashId(`${a.id}:breath-phase`))()*Math.PI*2);
+      breathSpeeds.push(0.5 + seededRandom(hashId(`${a.id}:breath-speed`))()*0.6);
+      breathEnabled.push(breathPicks.has(index) ? 1 : 0);
     });
     const g=new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
@@ -387,8 +444,12 @@ export class Universe {
     g.setAttribute('aScale',new THREE.Float32BufferAttribute(scales,1));
     g.setAttribute('aPhase',new THREE.Float32BufferAttribute(phases,1));
     g.setAttribute('aSpeed',new THREE.Float32BufferAttribute(speeds,1));
+    g.setAttribute('aBreathPhase',new THREE.Float32BufferAttribute(breathPhases,1));
+    g.setAttribute('aBreathSpeed',new THREE.Float32BufferAttribute(breathSpeeds,1));
+    g.setAttribute('aBreathEnabled',new THREE.Float32BufferAttribute(breathEnabled,1));
     g.setAttribute('aArrival',new THREE.Float32BufferAttribute(arrivals,1));
     g.setAttribute('aEntryReveal',new THREE.Float32BufferAttribute(entryReveals,1));
+    g.setAttribute('aEntryDelay',new THREE.Float32BufferAttribute(entryDelays,1));
     if(this.stars){this.group.remove(this.stars);this.stars.geometry.dispose();}
     this.stars=new THREE.Points(g,this.starMaterial);this.stars.name='account-stars';this.group.add(this.stars);
     if(this.meteor){
@@ -710,6 +771,11 @@ export class Universe {
     }
     this.focusTween={start:performance.now()+delay,from:this.camera.position.clone(),fromTarget:this.controls.target.clone(),to,toTarget:target,duration,ease:this.config.focusEase};
     return this.focusTween;
+  }
+  isHomeView() {
+    if(this.focusTween || this.viewOffsetTween || this.introActive) return false;
+    return this.camera.position.distanceTo(this.home) < .2
+      && this.controls.target.lengthSq() < .01;
   }
   reset() {
     this.introActive=false;

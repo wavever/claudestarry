@@ -10,13 +10,15 @@ Claude Starry 是一个由社区创建的非官方纪念项目。它使用 Three
 
 ## 演示
 
+原片按 GitHub 上传限制分为两段播放，保留全部动画和原始画质。
+
 第一段
 
-https://github.com/user-attachments/assets/df5bb735-d866-48a1-9db1-1aa855a590be
+https://github.com/user-attachments/assets/58bb6f66-f6b6-43dc-9756-63772fdd78cd
 
 第二段
 
-https://github.com/user-attachments/assets/9117a77a-3023-4567-bc9c-1202bb0583cd
+https://github.com/user-attachments/assets/c42fdcf6-5597-49c3-bc30-a5bdb104863f
 
 [下载完整原版录屏](docs/demo.mp4)
 

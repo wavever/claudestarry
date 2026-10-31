@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.DS_Store
+.deploy-private/
+.env*
+!.env.example
+/scratch/
+/src/scratch/
+
+debug-preset.json
+debug-preset.json.tmp

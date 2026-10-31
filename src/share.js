@@ -1,10 +1,11 @@
+import {normalizeLocale,sloganForLocale,translate} from './i18n.js';
+
 const WIDTH = 1080;
 const HEIGHT = 1500;
 const SNAPSHOT_HEIGHT = 626;
 const INSET = 72;
 const FONT_SANS = '"Microsoft YaHei", "PingFang SC", sans-serif';
 const FONT_MONO = '"SFMono-Regular", Consolas, monospace';
-const DEFAULT_SLOGAN = '你的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光';
 
 function numberAt(position, index) {
   const value = Array.isArray(position) ? Number(position[index]) : 0;
@@ -32,7 +33,7 @@ function limitCharacters(value, maximum) {
   return Array.from(value).slice(0, maximum).join('');
 }
 
-function dateLabel(value, empty = '未填写') {
+function dateLabel(value, empty = '') {
   const clean = text(value);
   return /^\d{4}-\d{2}-\d{2}$/.test(clean) ? clean.replaceAll('-', ' / ') : empty;
 }
@@ -218,24 +219,24 @@ function drawLabel(context, value, x, y) {
   context.letterSpacing = '0px';
 }
 
-async function resolveSnapshot(snapshot) {
+async function resolveSnapshot(snapshot, errorMessage) {
   if (typeof HTMLCanvasElement !== 'undefined' && snapshot instanceof HTMLCanvasElement) return snapshot;
   if (typeof snapshot !== 'string' || !snapshot.startsWith('data:image/')) return null;
   const image = new Image();
   image.decoding = 'async';
   const ready = new Promise((resolve, reject) => {
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('分享快照无法读取。'));
+    image.onerror = () => reject(new Error(errorMessage));
   });
   image.src = snapshot;
   return ready;
 }
 
-function canvasToBlob(canvas) {
+function canvasToBlob(canvas, errorMessage) {
   return new Promise((resolve, reject) => {
     canvas.toBlob(blob => {
       if (blob) resolve(blob);
-      else reject(new Error('分享图片生成失败。'));
+      else reject(new Error(errorMessage));
     }, 'image/png');
   });
 }
@@ -244,20 +245,22 @@ function canvasToBlob(canvas) {
  * Render an export-ready social image.  The caller owns download/share UI;
  * this function only returns a deterministic PNG File.
  */
-export async function createStarShare({ account = {}, designation, snapshot, siteUrl, slogan } = {}) {
-  if (typeof document === 'undefined') throw new Error('分享图片只能在浏览器中生成。');
-  const image = await resolveSnapshot(snapshot);
+export async function createStarShare({ account = {}, designation, snapshot, siteUrl, slogan, locale = 'zh-CN' } = {}) {
+  const resolvedLocale=normalizeLocale(locale)||'zh-CN';
+  const t=(key,values)=>translate(resolvedLocale,key,values);
+  if (typeof document === 'undefined') throw new Error(t('share.imageFailed'));
+  const image = await resolveSnapshot(snapshot,t('share.imageFailed'));
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
   canvas.height = HEIGHT;
   const context = canvas.getContext('2d');
-  if (!context) throw new Error('此浏览器无法创建分享图片。');
+  if (!context) throw new Error(t('share.imageFailed'));
 
   const catalog = safeDesignation(designation, account);
   const alias = limitCharacters(text(account.alias, catalog) || catalog, 32);
-  const message = limitCharacters(text(account.message, '曾经在线，仍有余光。') || '曾经在线，仍有余光。', 180);
+  const message = limitCharacters(text(account.message, t('share.defaultMessage')) || t('share.defaultMessage'), 180);
   const url = limitCharacters(text(siteUrl), 112);
-  const shareSlogan = text(slogan, DEFAULT_SLOGAN) || DEFAULT_SLOGAN;
+  const shareSlogan = text(slogan, sloganForLocale(resolvedLocale)) || sloganForLocale(resolvedLocale);
   const seed = `${account.id || catalog}:${account.date || ''}`;
 
   drawBackground(context, seed);
@@ -283,7 +286,7 @@ export async function createStarShare({ account = {}, designation, snapshot, sit
   context.fillStyle = '#b8a483';
   context.font = `12px ${FONT_MONO}`;
   context.letterSpacing = '2.5px';
-  context.fillText('AFTERLIGHT  /  STAR RECORD', left, 620);
+  context.fillText(`CLAUDE ${t('share.afterlight').toUpperCase()}  /  ${t('share.record')}`, left, 620);
   context.letterSpacing = '0px';
 
   context.fillStyle = '#eee6d9';
@@ -305,23 +308,23 @@ export async function createStarShare({ account = {}, designation, snapshot, sit
   context.stroke();
 
   const coordinateY = ruleY + 37;
-  drawLabel(context, '星云坐标  ·  XYZ', left, coordinateY);
+  drawLabel(context, `${t('share.coordinates')}  ·  XYZ`, left, coordinateY);
   context.fillStyle = '#d8cbbc';
   context.font = `17px ${FONT_MONO}`;
   context.fillText(formatStarCoordinates(account.position), left, coordinateY + 31);
   context.fillStyle = '#7f786e';
   context.font = `12px ${FONT_SANS}`;
-  context.fillText('落于星云，留有余光。', left, coordinateY + 56);
+  context.fillText(t('share.located'), left, coordinateY + 56);
 
   const dateX = left + 474;
-  drawLabel(context, '注册日期', dateX, coordinateY);
+  drawLabel(context, t('share.started'), dateX, coordinateY);
   context.fillStyle = '#d8cbbc';
   context.font = `16px ${FONT_MONO}`;
-  context.fillText(dateLabel(account.started), dateX, coordinateY + 29);
-  drawLabel(context, '停用日期', dateX, coordinateY + 61);
+  context.fillText(dateLabel(account.started, t('share.unfilled')), dateX, coordinateY + 29);
+  drawLabel(context, t('share.disabled'), dateX, coordinateY + 61);
   context.fillStyle = '#d8cbbc';
   context.font = `16px ${FONT_MONO}`;
-  context.fillText(dateLabel(account.date, '未记录'), dateX, coordinateY + 90);
+  context.fillText(dateLabel(account.date, t('share.unrecorded')), dateX, coordinateY + 90);
 
   const messageRuleY = coordinateY + 120;
   context.strokeStyle = 'rgba(218, 200, 167, 0.15)';
@@ -329,7 +332,7 @@ export async function createStarShare({ account = {}, designation, snapshot, sit
   context.moveTo(left, messageRuleY);
   context.lineTo(right, messageRuleY);
   context.stroke();
-  drawLabel(context, '留  言', left, messageRuleY + 35);
+  drawLabel(context, t('share.message'), left, messageRuleY + 35);
   context.fillStyle = '#d9d1c6';
   context.font = `24px ${FONT_SANS}`;
   const messageLines = wrappedLines(context, message, right - left, 6);
@@ -354,8 +357,8 @@ export async function createStarShare({ account = {}, designation, snapshot, sit
   context.fillStyle = '#6f675c';
   context.font = `11px ${FONT_MONO}`;
   context.textAlign = 'right';
-  context.fillText('AFTERLIGHT · 一点余光', right, 1401);
+  context.fillText(`AFTERLIGHT · ${t('share.afterlight')}`, right, 1401);
 
-  const blob = await canvasToBlob(canvas);
+  const blob = await canvasToBlob(canvas,t('share.imageFailed'));
   return new File([blob], safeFilename(catalog, account), { type: 'image/png' });
 }

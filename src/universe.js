@@ -185,7 +185,7 @@ void main(){
 }`;
 
 export class Universe {
-  constructor(container, accounts, {onHover,onSelect,onFrame,onReady,onNebulaReady,onError,config}) {
+  constructor(container, accounts, {onHover,onSelect,onFrame,onReady,onNebulaReady,onError,config,ariaLabel}) {
     this.config=normalizeConfig(config);
     this.container=container; this.callbacks={onHover,onSelect,onFrame,onReady,onNebulaReady,onError};
     this.nebulaReadyFired=false;
@@ -199,7 +199,7 @@ export class Universe {
     this.pixelRatio=this.getRenderPixelRatio();
     this.renderer.setPixelRatio(this.pixelRatio);
     const canvas=this.renderer.domElement;
-    canvas.setAttribute('aria-label','历史聚合星海，拖动旋转、滚轮或双指缩放。新增独立星可点击阅读记录；历史光点为官方汇总数据的聚合展示。');
+    canvas.setAttribute('aria-label',ariaLabel||'Interactive star field');
     canvas.tabIndex=0;
     container.append(canvas);
     this.scene=new THREE.Scene();
@@ -238,6 +238,9 @@ export class Universe {
     this.renderer.debug.onShaderError=(gl,program,vs,fs)=>{console.error(gl.getProgramInfoLog(program),gl.getShaderInfoLog(vs),gl.getShaderInfoLog(fs));this.disposed=true;this.callbacks.onError('shader');};
     this.animate=this.animate.bind(this);
     this.raf=requestAnimationFrame(this.animate);
+  }
+  setAriaLabel(label) {
+    if (typeof label === 'string' && label) this.renderer?.domElement?.setAttribute('aria-label',label);
   }
   setAccounts(accounts) {
     const arrivalsById=new Map((this.accounts??[]).map((a,i)=>[a.id,this.stars?.geometry.attributes.aArrival?.getX(i)??-10000]));

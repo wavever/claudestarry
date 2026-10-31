@@ -1,3 +1,5 @@
+import {sloganForLocale} from './i18n.js';
+
 export const CONFIG_STORAGE_KEY = 'afterlight-animation-preset-v1';
 export const EASINGS = ['linear','smoothstep','easeInQuad','easeInCubic','easeOutCubic','easeInOutCubic'];
 export const ANIMATION_MODES = ['full','slogan-freeze','slogan-loop','nebula-loop','nebula-freeze'];
@@ -12,9 +14,18 @@ export const DEFAULT_CONFIG = Object.freeze({
   meteorDuration:1.85,meteorEase:'linear',meteorTail:.17,focusDuration:1.5,focusDelay:.08,focusEase:'smoothstep',
   twinkleDecay:8,homeDistance:44,mobileHomeDistance:74,
 });
+export function defaultConfigForLocale(locale){
+  return {...DEFAULT_CONFIG,slogan:sloganForLocale(locale)};
+}
+export function isDefaultSlogan(slogan){
+  return slogan===DEFAULT_CONFIG.slogan||slogan===sloganForLocale('en');
+}
+export function localizeDefaultSlogan(slogan,locale){
+  return isDefaultSlogan(slogan)?sloganForLocale(locale):slogan;
+}
 const RANGES={fontSize:[16,96],mobileFontSize:[14,64],fontWeight:[300,700],textParticleSize:[.6,4],textSampleStep:[1,4],lineHeight:[30,140],mobileLineHeight:[24,100],lightDuration:[.1,10],textHold:[0,10],textMorphDuration:[.2,8],logoHold:[0,10],nebulaDuration:[.2,20],meteorDuration:[.2,8],meteorTail:[.03,.35],focusDuration:[.2,8],focusDelay:[0,2],twinkleDecay:[1,60],homeDistance:[25,100],mobileHomeDistance:[40,160]};
-export function normalizeConfig(input={}){
-  const clean={...DEFAULT_CONFIG};
+export function normalizeConfig(input={},defaults=DEFAULT_CONFIG){
+  const clean={...defaults};
   if(!input||typeof input!=='object')return clean;
   for(const [key,[low,high]] of Object.entries(RANGES)){
     const value=input[key];
@@ -26,8 +37,8 @@ export function normalizeConfig(input={}){
   if(typeof input.fontFamily==='string'&&input.fontFamily.trim())clean.fontFamily=input.fontFamily.trim().slice(0,200);
   return clean;
 }
-export function loadConfig(storage){
-  try{return normalizeConfig(JSON.parse(storage.getItem(CONFIG_STORAGE_KEY)||'null'));}catch{return {...DEFAULT_CONFIG};}
+export function loadConfig(storage,defaults=DEFAULT_CONFIG){
+  try{return normalizeConfig(JSON.parse(storage.getItem(CONFIG_STORAGE_KEY)||'null'),defaults);}catch{return {...defaults};}
 }
 export function easeValue(name,t){
   const x=Math.max(0,Math.min(1,t));

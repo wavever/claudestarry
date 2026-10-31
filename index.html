@@ -4,41 +4,52 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#020202">
-  <meta name="description" content="每一个被停用的 Claude 账号，都在星河里留下一点余光。">
+  <meta name="description" content="每一个被停用的 Claude 账号，都在星河里留下一点余光。" data-i18n-content="meta.description">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Claude 余光 · Claude Starry">
-  <meta name="twitter:description" content="被停用的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光。">
+  <meta name="twitter:title" content="Claude 余光 · Claude Starry" data-i18n-content="meta.title">
+  <meta name="twitter:description" content="被停用的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光。" data-i18n-content="meta.socialDescription">
   <meta name="twitter:image" content="https://claudestarry.pages.dev/og-preview.png">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Claude 余光 · Claude Starry">
-  <meta property="og:description" content="被停用的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光。">
+  <meta property="og:title" content="Claude 余光 · Claude Starry" data-i18n-content="meta.title">
+  <meta property="og:description" content="被停用的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光。" data-i18n-content="meta.socialDescription">
   <meta property="og:image" content="https://claudestarry.pages.dev/og-preview.png">
   <meta property="og:url" content="https://claudestarry.pages.dev/">
-  <title>Claude 余光 · Claude Starry</title>
+  <title data-i18n="meta.title">Claude 余光 · Claude Starry</title>
   <style>html,body{margin:0;background:#020202;overflow:hidden}#universe{height:100svh}.control-dock{opacity:0;visibility:hidden;pointer-events:none}</style>
 </head>
 <body>
-  <main id="universe" aria-label="你的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光">
+  <main id="universe" aria-label="你的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光" data-i18n-attrs="aria-label:scene.aria">
     <div id="scene"></div>
     <div class="vignette" aria-hidden="true"></div>
-    <header class="app-brand" aria-label="Claude 余光 (Claude Starry)">
-      <div class="brand-title">Claude 余光</div>
+    <header class="app-brand" aria-label="Claude 余光 (Claude Starry)" data-i18n-attrs="aria-label:brand.aria">
+      <div class="brand-title" data-i18n="brand.title">Claude 余光</div>
       <div class="brand-subtitle">Claude Starry</div>
     </header>
-    <div id="account-counter" class="account-counter" aria-label="已记录停用账号数量">
-      <span class="account-counter__text">已记录</span>
+    <nav class="site-utility" aria-label="选择语言" data-i18n-attrs="aria-label:utility.language">
+      <div class="locale-switch" role="group" aria-label="选择语言" data-i18n-attrs="aria-label:utility.language">
+        <button class="locale-switch__option" type="button" data-locale="zh-CN" aria-pressed="true">中文</button>
+        <span class="locale-switch__slash" aria-hidden="true">/</span>
+        <button class="locale-switch__option" type="button" data-locale="en" aria-pressed="false">EN</button>
+      </div>
+      <div class="social-links">
+        <a href="https://github.com/wavever/claudestarry" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看 Claude Starry" data-i18n-attrs="aria-label:utility.github">GitHub</a>
+        <a href="https://x.com/HtWavever" target="_blank" rel="noopener noreferrer" aria-label="在 X 关注 @HtWavever" data-i18n-attrs="aria-label:utility.x">X&nbsp;@HtWavever</a>
+      </div>
+    </nav>
+    <div id="account-counter" class="account-counter" aria-label="已记录停用账号数量" data-i18n-attrs="aria-label:counter.aria">
+      <span class="account-counter__text" data-i18n="counter.prefix">已记录</span>
       <canvas id="counter-canvas" class="counter-canvas"></canvas>
-      <span class="account-counter__text">个停用账号</span>
+      <span id="account-counter-suffix" class="account-counter__text" data-i18n="counter.suffix">个停用账号</span>
     </div>
-    <div id="control-dock" class="control-dock" role="toolbar" aria-label="星河控制">
-      <button id="restore" class="control-btn control-btn--restore" aria-label="恢复视角" title="恢复视角">
+    <div id="control-dock" class="control-dock" role="toolbar" aria-label="星河控制" data-i18n-attrs="aria-label:controls.toolbar">
+      <button id="restore" class="control-btn control-btn--restore" aria-label="恢复视角" title="恢复视角" data-i18n-attrs="aria-label:controls.restore|title:controls.restore">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
           <path d="M3 3v5h5"/>
           <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
         </svg>
       </button>
-      <button id="create" class="control-btn control-btn--create" aria-label="添加星星" title="添加星星">
+      <button id="create" class="control-btn control-btn--create" aria-label="添加星星" title="添加星星" data-i18n-attrs="aria-label:controls.create|title:controls.create">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <line x1="12" y1="5" x2="12" y2="19"/>
           <line x1="5" y1="12" x2="19" y2="12"/>
@@ -58,65 +69,65 @@
       <circle id="card-connector-dot-card" class="card-connector-dot" r="2" />
     </svg>
     <i id="star-anchor" hidden aria-hidden="true"></i>
-    <aside id="star-card" hidden aria-label="星星名片">
-      <button id="card-close" class="card-close" aria-label="收起名片">×</button>
-      <p class="kicker">STAR RECORD</p>
+    <aside id="star-card" hidden aria-label="星星名片" data-i18n-attrs="aria-label:card.aria">
+      <button id="card-close" class="card-close" aria-label="收起名片" data-i18n-attrs="aria-label:card.close">×</button>
+      <p class="kicker" data-i18n="card.record">星表记录</p>
       <h2 id="card-name"></h2>
       <p id="card-catalog" class="card-catalog"></p>
       <div id="card-dates-group" class="card-dates-group">
-        <span id="card-dates-label" class="card-dates-label">注册 / 停用</span>
+        <span id="card-dates-label" class="card-dates-label" data-i18n="card.dateRange">注册 / 停用</span>
         <span id="card-dates" class="card-dates-val"></span>
       </div>
       <p id="card-message" class="card-message"></p>
       <div class="card-actions">
-        <button id="card-twitter" class="card-btn card-btn--twitter" type="button" title="推特分享" aria-label="推特分享">
+        <button id="card-twitter" class="card-btn card-btn--twitter" type="button" title="分享到 X" aria-label="分享到 X" data-i18n-attrs="title:card.shareX|aria-label:card.shareX">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
         </button>
-        <button id="card-copy-img" class="card-btn" type="button" title="复制星河名片截图到剪贴板" aria-label="复制星河名片截图">
+        <button id="card-copy-img" class="card-btn" type="button" title="复制星河名片截图到剪贴板" aria-label="复制星河名片截图" data-i18n-attrs="title:card.copyImage|aria-label:card.copyImage">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
         </button>
-        <button id="card-download-img" class="card-btn" type="button" title="下载星河名片截图" aria-label="下载星河名片截图">
+        <button id="card-download-img" class="card-btn" type="button" title="下载星河名片截图" aria-label="下载星河名片截图" data-i18n-attrs="title:card.downloadImage|aria-label:card.downloadImage">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         </button>
       </div>
     </aside>
-    <div id="webgl-error" hidden>星河需要支持 WebGL 2 的浏览器，请开启硬件加速后刷新。</div>
+    <div id="webgl-error" hidden data-i18n="webgl.error">星河需要支持 WebGL 2 的浏览器，请开启硬件加速后刷新。</div>
     <div id="toast" role="status" aria-live="polite"></div>
   </main>
 
   <dialog id="create-dialog" aria-labelledby="create-title">
-    <button class="dialog-close" data-close aria-label="关闭">×</button>
+    <button class="dialog-close" data-close aria-label="关闭" data-i18n-attrs="aria-label:dialog.close">×</button>
     <form id="star-form">
-      <h2 id="create-title">留下你被停用账号的余光</h2>
-      <label>账号名称
-        <input name="alias" maxlength="32" autocomplete="off" placeholder="为它起一个独一无二的名称吧" required autofocus>
+      <h2 id="create-title" data-i18n="dialog.title">留下你被停用账号的余光</h2>
+      <label><span data-i18n="dialog.alias">账号名称</span>
+        <input name="alias" maxlength="32" autocomplete="off" placeholder="为它起一个独一无二的名称吧" data-i18n-placeholder="dialog.aliasPlaceholder" required autofocus>
       </label>
       <div class="date-pair">
-        <label>注册日期 <small>可选</small><input name="started" type="date" min="2021-01-26"></label>
-        <label>停用日期<input name="date" type="date" min="2021-01-26" required></label>
+        <label><span data-i18n="dialog.started">注册日期</span> <small data-i18n="dialog.optional">可选</small><input name="started" type="date" min="2021-01-26"></label>
+        <label><span data-i18n="dialog.disabled">停用日期</span><input name="date" type="date" min="2021-01-26" required></label>
       </div>
-      <label>你和它的故事 <small>可选</small>
-        <textarea name="message" maxlength="180" rows="3" placeholder="还有一个故事，留在这里。"></textarea>
+      <label><span data-i18n="dialog.story">你和它的故事</span> <small data-i18n="dialog.optional">可选</small>
+        <textarea name="message" maxlength="180" rows="3" placeholder="还有一个故事，留在这里。" data-i18n-placeholder="dialog.storyPlaceholder"></textarea>
       </label>
-      <p class="dialog-intro">记录会公开展示，请使用昵称，勿填写密码等敏感信息。需要删除时，可在 <a href="https://github.com/wavever/claudestarry/issues/new" target="_blank" rel="noopener noreferrer">GitHub 申请删除</a>，提供星表编号即可。</p>
+      <p class="dialog-intro"><span data-i18n="dialog.noticeBefore">记录会公开展示，请使用昵称，勿填写密码等敏感信息。需要删除时，可在 </span><a href="https://github.com/wavever/claudestarry/issues/new" target="_blank" rel="noopener noreferrer">GitHub</a><span data-i18n="dialog.noticeAfter"> 申请删除，提供星表编号即可。</span></p>
       <p id="form-error" role="alert"></p>
-      <button class="submit-button" type="submit">留下余光 <span>↗</span></button>
+      <button class="submit-button" type="submit"><span data-i18n="dialog.submit">留下余光</span> <span>↗</span></button>
     </form>
   </dialog>
 
   <dialog id="memory-dialog" aria-labelledby="memory-name">
-    <button class="dialog-close" data-close aria-label="关闭">×</button>
-    <p class="kicker">ACCOUNT / AFTERLIGHT</p>
+    <button class="dialog-close" data-close aria-label="关闭" data-i18n-attrs="aria-label:dialog.close">×</button>
+    <p class="kicker" data-i18n="memory.record">账户 / 余光</p>
     <h2 id="memory-name"></h2>
     <p id="memory-catalog" class="catalog-line"></p>
     <p id="memory-message" class="memory-message"></p>
     <div class="memory-stats">
-      <div><span>在线时间</span><strong id="memory-life"></strong><small id="memory-dates"></small></div>
-      <div><span>当前余光</span><strong id="memory-light"></strong></div>
+      <div><span data-i18n="memory.life">在线时间</span><strong id="memory-life"></strong><small id="memory-dates"></small></div>
+      <div><span data-i18n="memory.light">当前余光</span><strong id="memory-light"></strong></div>
     </div>
     <div class="memory-track" aria-hidden="true"><i id="memory-light-bar"></i></div>
     <p id="memory-note" class="memory-note"></p>
-    <button id="memory-card" class="submit-button">查看星星名片 <span>↗</span></button>
+    <button id="memory-card" class="submit-button"><span data-i18n="memory.viewCard">查看星星名片</span> <span>↗</span></button>
   </dialog>
   <script type="module" src="/src/entry-boot.js"></script>
 </body>

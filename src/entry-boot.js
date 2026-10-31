@@ -1,9 +1,14 @@
-import {DEFAULT_CONFIG,loadConfig,easeValue} from './config.js';
+import {defaultConfigForLocale,loadConfig,localizeDefaultSlogan,easeValue} from './config.js';
 import {EntryClock} from './entry-clock.js';
 import {sampleSlogan} from './text-layout.js';
 import {seededRandom} from './model.js';
+import {applyDocumentLocale,localeSearchWithSelection,normalizeLocale,persistLocale,resolveLocale,safeStorage} from './i18n.js';
 
-let config={...DEFAULT_CONFIG};try{config=loadConfig(localStorage);}catch{}
+const browserStorage=safeStorage(()=>localStorage);
+let locale=resolveLocale({search:location.search,storage:browserStorage,languages:navigator.languages});
+applyDocumentLocale(locale);
+let config=defaultConfigForLocale(locale);
+try{config=loadConfig(browserStorage,defaultConfigForLocale(locale));config.slogan=localizeDefaultSlogan(config.slogan,locale);}catch{}
 const canvas=document.createElement('canvas');canvas.id='entry-particles';
 canvas.setAttribute('aria-label',config.slogan);canvas.style.cssText='position:fixed;inset:0;width:100%;height:100%;z-index:2;background:#020202;pointer-events:none';
 document.querySelector('#universe').append(canvas);
@@ -116,7 +121,38 @@ function finish(){
 }
 
 function pause(){clock.pause();}
-const boot={ready,finish,config,elapsed:0};window.__afterlightEntryBoot=boot;
+function setLocale(nextLocale){
+  const normalized=normalizeLocale(nextLocale);
+  if(!normalized)return locale;
+  locale=normalized;
+  config.slogan=localizeDefaultSlogan(config.slogan,locale);
+  applyDocumentLocale(locale);
+  canvas.setAttribute('aria-label',config.slogan);
+  if(!finished)size();
+  return locale;
+}
+function syncLocaleControls(){
+  document.querySelectorAll('[data-locale]').forEach(button=>{
+    button.setAttribute('aria-pressed',String(button.dataset.locale===locale));
+  });
+}
+function syncLocaleSearch(nextLocale){
+  try{
+    const nextSearch=localeSearchWithSelection(location.search,nextLocale);
+    if(nextSearch!==location.search)history.replaceState(history.state,'',`${location.pathname}${nextSearch}${location.hash}`);
+  }catch{}
+}
+document.querySelectorAll('[data-locale]').forEach(button=>{
+  button.addEventListener('click',()=>{
+    const selected=setLocale(button.dataset.locale);
+    persistLocale(browserStorage,selected);
+    syncLocaleSearch(selected);
+    syncLocaleControls();
+    dispatchEvent(new CustomEvent('afterlight:localechange',{detail:{locale:selected}}));
+  });
+});
+syncLocaleControls();
+const boot={ready,finish,config,elapsed:0,get locale(){return locale;},setLocale};window.__afterlightEntryBoot=boot;
 addEventListener('resize',size);document.addEventListener('visibilitychange',pause);size();
 
 function draw(now){

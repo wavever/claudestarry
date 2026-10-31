@@ -5,6 +5,15 @@ export const SHARED_STAR_PAGE_SIZE = 1000;
 export const SHARED_STAR_SELECT = 'id,catalog_number,alias,started,date,message,created_at';
 export const SHARED_STAR_RECONCILE_OVERLAP_MS = 60000;
 const ID_RE = /^MY-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const DEFAULT_ERROR_MESSAGES = Object.freeze({
+  sharedSync: '共享星河暂时无法同步。',
+  invalidSubmission: '请检查日期和填写内容。',
+  connection: '无法连接共享星河。',
+  wait: '请稍候再送入另一颗星。',
+  sharedSave: '暂时无法保存，请检查填写内容后重试。',
+  sharedUnavailable: '共享星河暂时无法保存。',
+  invalidRecord: '共享星河返回了无效记录。',
+});
 
 export const latestCivilDate = () => new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const textLength = value => Array.from(value).length;
@@ -105,6 +114,7 @@ export class SharedStarsClient {
     this.now = options.now || (() => Date.now());
     this.isVisible = options.isVisible || (() => typeof document === 'undefined' || !document.hidden);
     this.fetchImpl = options.fetchImpl || globalThis.fetch?.bind(globalThis);
+    this.message = typeof options.message === 'function' ? options.message : key => DEFAULT_ERROR_MESSAGES[key] || DEFAULT_ERROR_MESSAGES.sharedUnavailable;
     const buildClient = options.createClientImpl || createClient;
     this.client = buildClient(config.url, config.anonKey, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -119,6 +129,7 @@ export class SharedStarsClient {
   }
 
   listRecords() { return sortSharedStars([...this.recordsById.values()]); }
+  error(key, status = 0) { return new SharedStarsError(this.message(key), status); }
   rememberOwn(id) {
     this.ownIds.add(id);
     while (this.ownIds.size > 128) this.ownIds.delete(this.ownIds.values().next().value);
@@ -172,7 +183,7 @@ export class SharedStarsClient {
       this.hydrated = true;
     } catch {
       if (!this.isActive(generation)) return;
-      this.onError(new SharedStarsError('共享星河暂时无法同步。'));
+      this.onError(this.error('sharedSync'));
     }
     if (!this.isActive(generation)) return;
     if (!this.socketLive || !this.hydrated) this.scheduleFallback(generation);
@@ -243,7 +254,7 @@ export class SharedStarsClient {
         this.hydrated = true;
       } catch {
         if (!this.isActive(generation)) return;
-        this.onError(new SharedStarsError('共享星河暂时无法同步。'));
+        this.onError(this.error('sharedSync'));
       }
       if (this.isActive(generation)) this.scheduleFallback(generation);
     }, 60000);
@@ -284,7 +295,7 @@ export class SharedStarsClient {
       if (since) query = query.gte('created_at', since);
       const { data, error } = await query;
       if (!this.isCurrentGeneration(generation)) return [];
-      if (error) throw new SharedStarsError('共享星河暂时无法同步。');
+      if (error) throw this.error('sharedSync');
       const page = Array.isArray(data) ? data : [];
       const result = this.ingest(page);
       added.push(...result.added);
@@ -320,9 +331,9 @@ export class SharedStarsClient {
 
   async submit(input) {
     const submission = normalizeStarSubmission(input);
-    if (!submission) throw new SharedStarsError('请检查日期和填写内容。', 400);
+    if (!submission) throw this.error('invalidSubmission', 400);
     this.rememberOwn(submission.id);
-    if (!this.fetchImpl) throw new SharedStarsError('无法连接共享星河。');
+    if (!this.fetchImpl) throw this.error('connection');
     let response, body;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -330,16 +341,16 @@ export class SharedStarsClient {
         try { body = await response.json(); } catch { body = null; }
       } catch {
         if (attempt === 0) continue;
-        throw new SharedStarsError('无法连接共享星河。');
+        throw this.error('connection');
       }
       if (response.ok) break;
       if (response.status >= 500 && attempt === 0) continue; // same ID makes a retry safe
-      if (response.status === 429) throw new SharedStarsError('请稍候再送入另一颗星。', 429);
-      throw new SharedStarsError('暂时无法保存，请检查填写内容后重试。', response.status);
+      if (response.status === 429) throw this.error('wait', 429);
+      throw this.error('sharedSave', response.status);
     }
-    if (!response?.ok) throw new SharedStarsError('共享星河暂时无法保存。', response?.status || 0);
+    if (!response?.ok) throw this.error('sharedUnavailable', response?.status || 0);
     const record = normalizeSharedStar(body?.star);
-    if (!record) throw new SharedStarsError('共享星河返回了无效记录。');
+    if (!record) throw this.error('invalidRecord');
     const result = this.ingest([record]);
     if (result.changed) this.emitRecords();
     return record;

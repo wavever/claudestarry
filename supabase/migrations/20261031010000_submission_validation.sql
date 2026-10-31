@@ -9,7 +9,10 @@ alter table public.stars add constraint stars_message_check
 
 alter table public.stars drop constraint if exists stars_supported_dates;
 alter table public.stars add constraint stars_supported_dates
-  check (date >= date '2021-01-26' and (started is null or started >= date '2021-01-26'));
+  -- Existing rows predate the public form's lower bound. NOT VALID keeps
+  -- them readable while PostgreSQL still enforces the floor for every new or
+  -- updated row; the RPC below rejects those submissions independently.
+  check (date >= date '2021-01-26' and (started is null or started >= date '2021-01-26')) not valid;
 
 create or replace function public.create_star_submission(
   p_id text,

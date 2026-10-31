@@ -60,19 +60,39 @@ export function validAccount(a, maxDay = dateToDay(today()), minDay = MIN_DAY) {
   }
   return true;
 }
+
+// A supplied registration date is the most useful duration signal. Older
+// records did not always collect it, so those keep a deterministic fallback:
+// days from the first supported date through their disabled date.
+export function accountStarSizeScale(a, referenceDay = dateToDay(today())) {
+  const dateDay = dateToDay(a?.date);
+  if (!Number.isFinite(dateDay)) return 0;
+  const startedDay = dateToDay(a?.started);
+  const duration = Number.isFinite(startedDay) && startedDay <= dateDay
+    ? startedDay === dateDay ? 1 : dateDay - startedDay + 1
+    : Math.max(1, dateDay - MIN_DAY + 1);
+  const safeReferenceDay = Number.isFinite(referenceDay) ? referenceDay : dateDay;
+  const supportedSpan = Math.max(1, safeReferenceDay - MIN_DAY + 1);
+  if (supportedSpan === 1) return 0;
+  return Math.min(1, Math.max(0, Math.log(duration) / Math.log(supportedSpan)));
+}
+
 export function loadAccounts(storage, maxDay) {
   const raw = JSON.parse(storage.getItem(STORAGE_KEY) || '[]');
   if (!Array.isArray(raw)) throw new Error('Invalid stored star collection');
-  return mergeAccounts([],raw,maxDay);
+  // A browser may already hold records from before the supported-date floor.
+  // Keep those readable; new form submissions still go through validAccount
+  // with MIN_DAY before they reach mergeAccounts.
+  return mergeAccounts([],raw,maxDay,null);
 }
 // One stable record ID -> one independent star. Replayed API events must
 // update the existing star, never create a second visual representation.
-export function mergeAccounts(existing, incoming, maxDay = dateToDay(today())) {
+export function mergeAccounts(existing, incoming, maxDay = dateToDay(today()), minDay = MIN_DAY) {
   const unique = new Map();
   const reserved=new Map();
   let next=nextCatalogNumber([...existing,...incoming]);
   for (const a of [...existing, ...incoming]) {
-    if (!validAccount(a,maxDay)) continue;
+    if (!validAccount(a,maxDay,minDay)) continue;
     let catalogNumber=unique.get(a.id)?.catalogNumber??a.catalogNumber;
     if(!Number.isSafeInteger(catalogNumber)||catalogNumber<1||(reserved.has(catalogNumber)&&reserved.get(catalogNumber)!==a.id))catalogNumber=next++;
     reserved.set(catalogNumber,a.id);

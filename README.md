@@ -1,4 +1,4 @@
-# Claude Afterlight · Claude Starry
+# Claude Starry
 
 [中文](README.zh-CN.md)
 
@@ -41,14 +41,12 @@ npm test
 npm run build
 ```
 
-The development server includes an animation debug panel. Production builds omit the panel, its styles, and its debug globals.
-
 ## Deploy your own shared galaxy
 
 1. Create a Supabase project and apply every SQL migration in `supabase/migrations/` in filename order.
 2. Copy `.env.example` to `.env.production.local` and set your public Supabase URL, anonymous key, and site URL.
 3. Configure the Cloudflare Pages Worker’s server-only secrets and its exact `ALLOWED_ORIGINS` list.
-4. Run `npm ci`, `npm test`, and `npm run build`, then publish `dist/` to your Cloudflare Pages project.
+4. Configure the workflow secrets in GitHub’s `production` environment; pushes to `main` will run the tests and publish `dist/` to Cloudflare Pages automatically.
 
 The [deployment guide](docs/deployment.md) covers the database, Worker secrets, origin configuration, and verification checklist. Never expose a service-role key or IP hash salt to the browser.
 

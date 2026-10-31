@@ -7,9 +7,9 @@ export function sampleSlogan(config,viewportWidth,viewportHeight){
   const mobile=viewportWidth<700;
   const width=Math.min(viewportWidth-24,1400),scale=2;
   const lines=config.slogan===DEFAULT_CONFIG.slogan&&mobile
-    ?['你的 Claude 账号','没有消失，','只是从此不再回应，','化作了星河里的一点光']
+    ?['被停用的 Claude 账号','没有消失，','只是从此不再回应，','化作了星河里的一点光']
     :config.slogan===sloganForLocale('en')&&mobile
-      ?['Your Claude account','has not disappeared.','It no longer responds—','it now glows among the stars.']
+      ?['Disabled Claude accounts','have not disappeared.','They no longer respond—','they now glow among the stars.']
       :config.slogan.split('\n');
   const desiredLineHeight=mobile?config.mobileLineHeight:config.lineHeight;
   const height=Math.min(viewportHeight*.7,Math.max(mobile?240:220,lines.length*desiredLineHeight+60));

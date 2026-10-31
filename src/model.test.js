@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { brightness, dateToDay, dayToDate, MIN_LIGHT, HALF_LIFE, validAccount, mergeAccounts, loadAccounts, galaxyPosition } from './model.js';
+import { accountStarSizeScale, brightness, CLAUDE_EPOCH, dateToDay, dayToDate, MIN_LIGHT, HALF_LIFE, validAccount, mergeAccounts, loadAccounts, galaxyPosition } from './model.js';
 import { BASELINE, HISTORY_LEVELS, historyLevel } from './baseline.js';
 test('light declines monotonically, halves excess light every 120 days and retains a floor', () => {
   assert.equal(brightness(0),1);
@@ -24,8 +24,27 @@ test('date validation rejects impossible dates, future dates and malformed stora
   // Empty story or omitted started are both valid
   assert.ok(validAccount({...good,message:''},now));
   assert.ok(validAccount({id:'mine2',alias:'star',date:'2024-05-01',started:null,message:''},now));
-  const result=loadAccounts({getItem:()=>JSON.stringify([good,{...good,date:'bad'}])},now);
-  assert.equal(result.length,1); assert.equal(result[0].sample,false);
+  const historical={...good,id:'legacy-local',date:'2021-01-25'};
+  const result=loadAccounts({getItem:()=>JSON.stringify([good,historical,{...good,id:'invalid',date:'bad'}])},now);
+  assert.equal(result.length,2); assert.equal(result.find(account=>account.id==='legacy-local')?.date,'2021-01-25');
+  assert.ok(result.every(account=>account.sample===false));
+  // Legacy display/import paths retain old records without weakening the
+  // normal merge default used by unvalidated callers.
+  assert.equal(mergeAccounts([], [historical], now).length,0);
+  assert.deepEqual(mergeAccounts([historical], [good], now, null).map(account=>account.id),['legacy-local','mine']);
+});
+
+test('account-star size follows online duration, then a disabled-date fallback', () => {
+  const referenceDay=dateToDay('2026-10-31');
+  const short={started:'2026-10-30',date:'2026-10-30'};
+  const long={started:CLAUDE_EPOCH,date:'2026-10-30'};
+  const fallbackEarly={date:CLAUDE_EPOCH};
+  const fallbackLater={date:'2024-10-30'};
+  assert.equal(accountStarSizeScale(short,referenceDay),0);
+  assert.ok(accountStarSizeScale(long,referenceDay)>accountStarSizeScale(short,referenceDay));
+  assert.equal(accountStarSizeScale(fallbackEarly,referenceDay),0);
+  assert.ok(accountStarSizeScale(fallbackLater,referenceDay)>accountStarSizeScale(fallbackEarly,referenceDay));
+  assert.ok(accountStarSizeScale(long,referenceDay)<=1);
 });
 test('every historical LOD represents the same source total without inventing identities or dates', () => {
   assert.equal(BASELINE.accounts,11_400_000);

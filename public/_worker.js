@@ -10,7 +10,9 @@ const DEFAULT_ALLOWED_ORIGINS = new Set([
 ]);
 const ID_RE = /^MY-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const MIN_ACCOUNT_DATE = '2021-01-26';
+// Keep this transport boundary in sync with CLAUDE_EPOCH in src/model.js and
+// the stars_supported_dates constraint in the Supabase migration.
+export const MIN_ACCOUNT_DATE = '2021-01-26';
 const TEXT_ENCODER = new TextEncoder();
 
 function json(body, status = 200, origin = null, headers = {}) {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { Universe } from './universe.js';
+import { ACCOUNT_STAR_MAX_CSS_DIAMETER, ACCOUNT_STAR_MIN_CSS_DIAMETER, accountStarCssDiameter, accountStarFramebufferDiameter, glslFloatLiteral, Universe } from './universe.js';
 
 function view() {
   const u=Object.create(Universe.prototype);
@@ -9,6 +9,14 @@ function view() {
   u.camera.position.set(0,0,64);
   return u;
 }
+
+test('GLSL shader interpolation always emits float literals',()=>{
+  assert.equal(glslFloatLiteral(9),'9.0');
+  assert.equal(glslFloatLiteral(-2),'-2.0');
+  assert.equal(glslFloatLiteral(5.5),'5.5');
+  assert.equal(glslFloatLiteral(.035),'0.035');
+  assert.throws(()=>glslFloatLiteral(Infinity),/finite/);
+});
 
 test('rapid zoom input accumulates without jumping the camera',()=>{
   const u=view();u.zoom(.5);u.zoom(.5);
@@ -38,6 +46,100 @@ test('zoom endpoints stay finite and reduced motion reaches them immediately',()
   assert.ok(u.camera.position.toArray().every(Number.isFinite));
 });
 
+test('card-cycle focus preserves the current zoom and camera view offset',()=>{
+  const u=view();
+  u.config={focusDuration:1.5,focusDelay:.08,focusEase:'smoothstep'};
+  u.width=1200;u.group=new THREE.Group();u.accounts=[{position:[14,3,-5]}];
+  u.camera.position.set(8,4,42);u.controls.target.set(-2,1,3);
+  u.camera.setViewOffset(1200,800,180,0,1200,800);
+  const distance=u.camera.position.distanceTo(u.controls.target);
+  const cardView={...u.camera.view};
+
+  u.focus(0,{duration:900,delay:0,preserveDistance:true,preserveViewOffset:true});
+
+  assert.deepEqual(u.camera.view,cardView);
+  assert.ok(Math.abs(u.zoomTarget-distance)<1e-10);
+  assert.ok(Math.abs(u.focusTween.to.distanceTo(u.focusTween.toTarget)-distance)<1e-10);
+  assert.deepEqual(u.focusTween.from.toArray(),[8,4,42]);
+});
+
+test('opening a card eases the frustum offset instead of snapping the field',()=>{
+  const u=view();
+  Object.assign(u,{width:1200,height:800,config:{focusDuration:1.5,focusEase:'smoothstep'},cardView:false,viewOffset:{x:0,y:0},viewOffsetTween:null});
+
+  u.setCardView(true,'right');
+  assert.equal(u.viewOffset.x,0);
+  assert.ok(!u.camera.view?.enabled);
+  const tween=u.viewOffsetTween;
+  assert.ok(tween);
+  assert.equal(tween.to.x,180);
+
+  const trail=[];
+  for(const at of [.25,.5,.75,1]){
+    u.updateViewOffset(tween.start+tween.duration*at);
+    trail.push(u.viewOffset.x);
+    assert.ok(u.camera.view?.enabled);
+  }
+  assert.ok(trail.every(x=>x>0&&x<=180));
+  assert.ok(trail[0]<trail[1]&&trail[1]<trail[2]&&trail[2]<trail[3]);
+  assert.equal(u.viewOffset.x,180);
+  assert.equal(u.camera.view.offsetX,180);
+  assert.equal(u.viewOffsetTween,null);
+});
+
+test('leaving the card view eases the offset back instead of cutting sideways',()=>{
+  const u=view();
+  Object.assign(u,{width:1200,height:800,config:{focusDuration:1.5,focusEase:'smoothstep'},cardView:false,viewOffset:{x:0,y:0},viewOffsetTween:null});
+  u.setCardView(true,'right',{immediate:true});
+  assert.equal(u.camera.view.offsetX,180);
+
+  u.setCardView(false);
+  assert.equal(u.camera.view.offsetX,180);
+  const tween=u.viewOffsetTween;
+  assert.ok(tween);
+  u.updateViewOffset(tween.start+tween.duration*.5);
+  assert.ok(u.viewOffset.x<180&&u.viewOffset.x>0);
+  u.updateViewOffset(tween.start+tween.duration);
+  assert.equal(u.viewOffset.x,0);
+  assert.ok(!u.camera.view?.enabled);
+});
+
+test('reduced motion applies card view offsets immediately',()=>{
+  const u=view();
+  Object.assign(u,{width:1200,height:800,config:{focusDuration:1.5,focusEase:'smoothstep'},cardView:false,viewOffset:{x:0,y:0},viewOffsetTween:null});
+  u.reduced=true;
+  u.setCardView(true,'left');
+  assert.equal(u.viewOffset.x,-180);
+  assert.equal(u.camera.view.offsetX,-180);
+  assert.equal(u.viewOffsetTween,null);
+  u.setCardView(false);
+  assert.ok(!u.camera.view?.enabled);
+});
+
+test('reduced-motion focus completes immediately at the retained distance',()=>{
+  const u=view();
+  u.config={focusDuration:1.5,focusDelay:.08,focusEase:'smoothstep'};
+  u.width=900;u.group=new THREE.Group();u.accounts=[{position:[8,-2,1]}];
+  u.reduced=true;u.camera.position.set(2,3,30);u.controls.target.set(1,1,4);
+  const distance=u.camera.position.distanceTo(u.controls.target);
+
+  u.focus(0,{preserveDistance:true,preserveViewOffset:true});
+
+  assert.equal(u.focusTween,null);
+  assert.deepEqual(u.controls.target.toArray(),[8,-2,1]);
+  assert.ok(Math.abs(u.camera.position.distanceTo(u.controls.target)-distance)<1e-10);
+});
+
+test('controls become eligible on the first nebula frame',()=>{
+  const u=Object.create(Universe.prototype);
+  u.entrySkipped=false;
+  assert.equal(u.controlsReadyForNebula(0,'full'),false);
+  assert.equal(u.controlsReadyForNebula(.000001,'full'),true);
+  assert.equal(u.controlsReadyForNebula(0,'nebula-freeze'),true);
+  u.entrySkipped=true;
+  assert.equal(u.controlsReadyForNebula(0,'slogan-freeze'),true);
+});
+
 
 test('share capture centers the camera and restores the mobile card framing',()=>{
   const u=view();
@@ -57,8 +159,10 @@ test('record updates preserve an active meteor by ID when point indices change',
   const a=account('a',0),b=account('b',1),c=account('c',2);
   const u=Object.create(Universe.prototype);
   u.accounts=[a,b];
+  u.accountReveal=0;
   u.stars={geometry:new THREE.BufferGeometry()};
   u.stars.geometry.setAttribute('aArrival',new THREE.Float32BufferAttribute([-10,-20],1));
+  u.stars.geometry.setAttribute('aEntryReveal',new THREE.Float32BufferAttribute([1,0],1));
   u.group={remove(){},add(){}};
   u.starMaterial=new THREE.PointsMaterial();
   u.meteor={id:'b',index:1};
@@ -66,5 +170,84 @@ test('record updates preserve an active meteor by ID when point indices change',
   assert.equal(u.meteor.index,0);
   assert.equal(u.stars.geometry.attributes.aVisible.getX(0),0);
   assert.equal(u.stars.geometry.attributes.aArrival.getX(0),-20);
+  assert.equal(u.stars.geometry.attributes.aEntryReveal.getX(0),0);
+  assert.equal(u.stars.geometry.attributes.aEntryReveal.getX(2),1);
+  u.stars.geometry.dispose();u.starMaterial.dispose();
+});
+
+test('initial account stars wait until the nebula has finished, while reduced motion is immediate',()=>{
+  const u=Object.create(Universe.prototype);
+  u.config={lightDuration:2,textHold:1,textMorphDuration:1.7,logoHold:.6,nebulaDuration:6};
+  const nebulaEnd=11.3;
+  u.reduced=false;
+  assert.equal(u.entryAccountReveal(nebulaEnd),0);
+  assert.ok(u.entryAccountReveal(nebulaEnd+.6)>0);
+  assert.ok(u.entryAccountReveal(nebulaEnd+.6)<1);
+  assert.equal(u.entryAccountReveal(nebulaEnd+2),1);
+  u.reduced=true;
+  assert.equal(u.entryAccountReveal(0),1);
+});
+
+test('entry-hidden stars cannot be picked and meteor landings bypass the entry fade',()=>{
+  const u=Object.create(Universe.prototype);
+  u.accountReveal=0;
+  u.uniforms={uAccountReveal:{value:0}};
+  u.stars={geometry:new THREE.BufferGeometry()};
+  u.stars.geometry.setAttribute('aVisible',new THREE.Float32BufferAttribute([1,1,0],1));
+  u.stars.geometry.setAttribute('aEntryReveal',new THREE.Float32BufferAttribute([1,0,0],1));
+  assert.equal(u.isAccountStarVisible(0),false);
+  assert.equal(u.isAccountStarVisible(1),true);
+  assert.equal(u.isAccountStarVisible(2),false);
+  u.setAccountEntryReveal(0,0);
+  assert.equal(u.isAccountStarVisible(0),true);
+  u.stageAccountsForEntry();
+  assert.equal(u.stars.geometry.attributes.aVisible.getX(2),0);
+  assert.equal(u.stars.geometry.attributes.aEntryReveal.getX(0),1);
+  u.stars.geometry.dispose();
+});
+
+test('switching intro language updates text particles without moving the camera or restarting entry',()=>{
+  const u=view();u.config={slogan:'中文'};u.uniforms={uTextMorph:{value:.4}};
+  u.historyBaseCount=2;u.history={geometry:new THREE.BufferGeometry()};
+  u.history.geometry.setAttribute('aTextPosition',new THREE.Float32BufferAttribute(new Float32Array(15),3));
+  u.history.geometry.setAttribute('aTextVisible',new THREE.Float32BufferAttribute(new Float32Array(5).fill(1),1));
+  const original=u.camera.position.clone(),rotation=u.camera.quaternion.clone(),clock={elapsed:2.5};u.entryClock=clock;
+  u.sampleEntryText=()=>[[1,2,3],[4,5,6]];
+  u.setSlogan('English');
+  assert.equal(u.config.slogan,'English');assert.deepEqual(u.camera.position.toArray(),original.toArray());
+  assert.deepEqual(u.camera.quaternion.toArray(),rotation.toArray());assert.equal(u.entryClock,clock);
+  assert.deepEqual([u.history.geometry.attributes.aTextPosition.getX(2),u.history.geometry.attributes.aTextPosition.getX(3)],[1,4]);
+  assert.equal(u.history.geometry.attributes.aTextVisible.getX(4),0);
+  u.history.geometry.dispose();
+});
+
+test('account stars stay in the requested CSS diameter range at any DPR or ordinary depth',()=>{
+  assert.equal(accountStarCssDiameter(0,44,44),ACCOUNT_STAR_MIN_CSS_DIAMETER);
+  assert.equal(accountStarCssDiameter(1,44,44),ACCOUNT_STAR_MAX_CSS_DIAMETER);
+  for(const [scale,depth,reference,twinkle] of [[0,20,44,-1],[.5,44,44,.7],[1,90,44,1]]){
+    const diameter=accountStarCssDiameter(scale,depth,reference,twinkle,1);
+    assert.ok(diameter>=ACCOUNT_STAR_MIN_CSS_DIAMETER&&diameter<=ACCOUNT_STAR_MAX_CSS_DIAMETER);
+  }
+  const cssDiameter=accountStarCssDiameter(.5,44,44,.4,1);
+  assert.equal(accountStarFramebufferDiameter(cssDiameter,2)/2,cssDiameter);
+  assert.equal(accountStarCssDiameter(.5,44,44,-1,0),accountStarCssDiameter(.5,44,44,1,0));
+});
+
+test('account star phase and speed are stable per ID, independent between IDs, and survive reordering',()=>{
+  const a={id:'stable-a',position:[0,0,0],started:'2026-10-01',date:'2026-10-30'};
+  const b={id:'stable-b',position:[1,0,0],started:null,date:'2026-10-30'};
+  const u=Object.create(Universe.prototype);
+  Object.assign(u,{accounts:[],accountReveal:1,group:{remove(){},add(){}},starMaterial:new THREE.PointsMaterial()});
+  u.setAccounts([a,b]);
+  const initial={
+    a:{phase:u.stars.geometry.attributes.aPhase.getX(0),speed:u.stars.geometry.attributes.aSpeed.getX(0)},
+    b:{phase:u.stars.geometry.attributes.aPhase.getX(1),speed:u.stars.geometry.attributes.aSpeed.getX(1)},
+  };
+  assert.notDeepEqual(initial.a,initial.b);
+  u.setAccounts([b,a]);
+  assert.equal(u.stars.geometry.attributes.aPhase.getX(0),initial.b.phase);
+  assert.equal(u.stars.geometry.attributes.aSpeed.getX(0),initial.b.speed);
+  assert.equal(u.stars.geometry.attributes.aPhase.getX(1),initial.a.phase);
+  assert.equal(u.stars.geometry.attributes.aSpeed.getX(1),initial.a.speed);
   u.stars.geometry.dispose();u.starMaterial.dispose();
 });

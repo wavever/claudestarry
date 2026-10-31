@@ -14,17 +14,32 @@
   <meta property="og:description" content="被停用的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光。" data-i18n-content="meta.socialDescription">
   <meta property="og:image" content="https://claudestarry.pages.dev/og-preview.png">
   <meta property="og:url" content="https://claudestarry.pages.dev/">
+  <link rel="stylesheet" href="/src/style.css">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
   <title data-i18n="meta.title">Claude 余光 · Claude Starry</title>
   <style>html,body{margin:0;background:#020202;overflow:hidden}#universe{height:100svh}.control-dock{opacity:0;visibility:hidden;pointer-events:none}</style>
+  <script
+    defer
+    src="https://vibecafe.ai/telemetry/v1.js"
+    data-vc-product-id="cmvwhxzi5000d08idt77kkvpw"
+    data-vc-auth-key="vc_web_JoHzDVxQggupZGLwM-dxWInVmWmzMtFgNAvuOoDDoGk"
+  ></script>
 </head>
 <body>
-  <main id="universe" aria-label="你的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光" data-i18n-attrs="aria-label:scene.aria">
+  <main id="universe" aria-label="被停用的 Claude 账号没有消失，只是从此不再回应，化作了星河里的一点光" data-i18n-attrs="aria-label:scene.aria">
     <div id="scene"></div>
     <div class="vignette" aria-hidden="true"></div>
-    <header class="app-brand" aria-label="Claude 余光 (Claude Starry)" data-i18n-attrs="aria-label:brand.aria">
+    <header class="app-brand" aria-label="Claude 余光" data-i18n-attrs="aria-label:brand.aria">
       <div class="brand-title" data-i18n="brand.title">Claude 余光</div>
-      <p class="brand-slogan" data-i18n="brand.slogan">你的 Claude 账号没有消失，只是从此不再回应，但仍留有余光</p>
-      <div class="brand-subtitle">Claude Starry</div>
+      <div id="account-counter" class="account-counter" aria-label="已有 0 个停用的 claude 账号留下余光" data-i18n-attrs="aria-label:counter.aria">
+        <span class="account-counter__text" data-i18n="counter.prefix">已有</span>
+        <span class="counter-number"><canvas id="counter-canvas" class="counter-canvas" aria-hidden="true"></canvas><span id="counter-value" aria-hidden="true">0</span></span>
+        <span id="account-counter-suffix" class="account-counter__text" data-i18n="counter.suffix">个停用的 claude 账号留下余光</span>
+      </div>
     </header>
     <nav class="site-utility" aria-label="选择语言" data-i18n-attrs="aria-label:utility.language">
       <div class="locale-switch" role="group" aria-label="选择语言" data-i18n-attrs="aria-label:utility.language">
@@ -33,21 +48,23 @@
         <button class="locale-switch__option" type="button" data-locale="en" aria-pressed="false">EN</button>
       </div>
       <div class="social-links">
-        <a href="https://github.com/wavever/claudestarry" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看 Claude Starry" data-i18n-attrs="aria-label:utility.github">GitHub</a>
-        <a href="https://x.com/HtWavever" target="_blank" rel="noopener noreferrer" aria-label="在 X 关注 @HtWavever" data-i18n-attrs="aria-label:utility.x">X&nbsp;@HtWavever</a>
+        <a href="https://github.com/wavever/claudestarry" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看 Claude Starry" data-i18n-attrs="aria-label:utility.github" title="GitHub"><img src="/icons/github.svg" alt="" aria-hidden="true" width="16" height="16"></a>
+        <a href="https://x.com/HtWavever" target="_blank" rel="noopener noreferrer" aria-label="在 X 关注 @HtWavever" data-i18n-attrs="aria-label:utility.x" title="X @HtWavever"><img src="/icons/x.svg" alt="" aria-hidden="true" width="16" height="16"></a>
       </div>
     </nav>
-    <div id="account-counter" class="account-counter" aria-label="已记录停用账号数量" data-i18n-attrs="aria-label:counter.aria">
-      <span class="account-counter__text" data-i18n="counter.prefix">已记录</span>
-      <canvas id="counter-canvas" class="counter-canvas"></canvas>
-      <span id="account-counter-suffix" class="account-counter__text" data-i18n="counter.suffix">个停用账号</span>
-    </div>
     <div id="control-dock" class="control-dock" role="toolbar" aria-label="星河控制" data-i18n-attrs="aria-label:controls.toolbar">
       <button id="restore" class="control-btn control-btn--restore" aria-label="恢复视角" title="恢复视角" data-i18n-attrs="aria-label:controls.restore|title:controls.restore">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
           <path d="M3 3v5h5"/>
           <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+        </svg>
+      </button>
+      <button id="own-stars" class="control-btn control-btn--own-stars" type="button" hidden aria-controls="star-card" aria-label="切换我添加的星星" title="切换我添加的星星" data-i18n-attrs="aria-label:controls.ownStars|title:controls.ownStars">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m12 3 1.55 4.45L18 9l-4.45 1.55L12 15l-1.55-4.45L6 9l4.45-1.55L12 3Z"/>
+          <path d="m19 14 .72 2.28L22 17l-2.28.72L19 20l-.72-2.28L16 17l2.28-.72L19 14Z"/>
+          <path d="m5 15 .55 1.45L7 17l-1.45.55L5 19l-.55-1.45L3 17l1.45-.55L5 15Z"/>
         </svg>
       </button>
       <button id="create" class="control-btn control-btn--create" aria-label="添加星星" title="添加星星" data-i18n-attrs="aria-label:controls.create|title:controls.create">
@@ -65,9 +82,6 @@
     </div>
     <svg id="card-connector-svg" class="card-connector-svg" style="display:none;" aria-hidden="true">
       <path id="card-connector-path" class="card-connector-path" d="" />
-      <circle id="card-connector-dot-star" class="card-connector-dot" r="2" />
-      <circle id="card-connector-dot-elbow" class="card-connector-dot" r="2" />
-      <circle id="card-connector-dot-card" class="card-connector-dot" r="2" />
     </svg>
     <i id="star-anchor" hidden aria-hidden="true"></i>
     <aside id="star-card" hidden aria-label="星星名片" data-i18n-attrs="aria-label:card.aria">
@@ -81,15 +95,23 @@
       </div>
       <p id="card-message" class="card-message"></p>
       <div class="card-actions">
-        <button id="card-twitter" class="card-btn card-btn--twitter" type="button" title="分享到 X" aria-label="分享到 X" data-i18n-attrs="title:card.shareX|aria-label:card.shareX">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+        <button id="card-share" class="card-btn card-btn--share" type="button" title="分享名片" aria-label="分享名片" data-i18n-attrs="title:card.shareImage|aria-label:card.shareImage">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="m8.6 10.5 6.8-4"></path><path d="m8.6 13.5 6.8 4"></path></svg>
+          <span data-i18n="card.shareImage">分享名片</span>
         </button>
-        <button id="card-copy-img" class="card-btn" type="button" title="复制星河名片截图到剪贴板" aria-label="复制星河名片截图" data-i18n-attrs="title:card.copyImage|aria-label:card.copyImage">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-        </button>
-        <button id="card-download-img" class="card-btn" type="button" title="下载星河名片截图" aria-label="下载星河名片截图" data-i18n-attrs="title:card.downloadImage|aria-label:card.downloadImage">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        </button>
+        <p class="card-share-hint" data-i18n="card.shareHint">“分享名片”会携带图片；X 仅预填文字。</p>
+        <div class="card-actions__secondary">
+          <button id="card-twitter" class="card-btn card-btn--twitter" type="button" title="在 X 发布文案" aria-label="在 X 发布文案" data-i18n-attrs="title:card.shareX|aria-label:card.shareX">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            <span class="card-btn__label" data-i18n="card.shareX">在 X 发布文案</span>
+          </button>
+          <button id="card-copy-img" class="card-btn card-btn--icon" type="button" title="复制星河名片截图到剪贴板" aria-label="复制星河名片截图" data-i18n-attrs="title:card.copyImage|aria-label:card.copyImage">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          </button>
+          <button id="card-download-img" class="card-btn card-btn--icon" type="button" title="下载星河名片截图" aria-label="下载星河名片截图" data-i18n-attrs="title:card.downloadImage|aria-label:card.downloadImage">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          </button>
+        </div>
       </div>
     </aside>
     <div id="webgl-error" hidden data-i18n="webgl.error">星河需要支持 WebGL 2 的浏览器，请开启硬件加速后刷新。</div>

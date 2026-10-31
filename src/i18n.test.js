@@ -52,7 +52,7 @@ test('an explicit locale choice persists safely and affects the default intro sl
   assert.equal(localeSearchWithSelection('?view=galaxy', 'zh-CN'), '?view=galaxy');
 });
 
-test('production slogans follow the selected locale even with a remembered custom debug slogan', () => {
+test('production slogans follow the selected locale even with a remembered custom slogan', () => {
   const staleSlogan = '你的 Claude 账号没有消失，只是从此不再回应，但仍留有余光';
   const english = localizeDefaultSlogan(staleSlogan, 'en', false);
   assert.equal(english, sloganForLocale('en'));
@@ -62,8 +62,9 @@ test('production slogans follow the selected locale even with a remembered custo
 });
 
 test('translations interpolate values, fall back predictably, and stay key-complete', () => {
-  assert.equal(translate('en', 'counter.aria', { count: 12 }), '12 disabled accounts recorded');
-  assert.equal(translate('en', 'counter.ariaOne', { count: 1 }), '1 disabled account recorded');
+  assert.equal(translate('en', 'counter.aria', { count: 12 }), '12 disabled Claude accounts have left an afterlight');
+  assert.equal(translate('en', 'counter.ariaOne', { count: 1 }), '1 disabled Claude account has left an afterlight');
+  assert.equal(translate('zh-CN', 'counter.aria', { count: 2 }), '已有 2 个停用的 claude 账号留下余光');
   assert.equal(translate('zh-CN', 'card.disabledOn', { date: '2026 / 10 / 31' }), '停用于 2026 / 10 / 31');
   assert.equal(translate('unsupported', 'controls.create'), '添加星星');
   assert.deepEqual(missingTranslationKeys(), { 'zh-CN': [], en: [] });

@@ -26,13 +26,26 @@ VITE_PUBLIC_SITE_URL=https://your-site.example
 
 Vite embeds `VITE_*` values into the browser bundle. If either Supabase browser value is absent, the application stays browser-local and does not upload prior local records when shared storage is later enabled.
 
-For Git-integrated Pages builds, set the same public `VITE_*` values in the Pages build environment; `.env.production.local` stays local and is not uploaded to Pages.
+For the included GitHub Actions workflow, add these repository or production-environment secrets in GitHub:
+
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+VITE_PUBLIC_SITE_URL
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+CLOUDFLARE_PROJECT_NAME
+```
+
+The workflow uses only the three `VITE_*` values while building and passes the Cloudflare credentials to the deploy action. GitHub Actions masks secret values in logs; `.env.production.local` stays local and is not uploaded to GitHub.
 
 Never put `SUPABASE_SERVICE_ROLE_KEY` or `IP_HASH_SALT` in a `VITE_*` variable, source file, browser-readable environment file, or build artifact.
 
 ## 3. Configure Cloudflare Pages
 
-Create a Cloudflare Pages project for this repository with:
+Create a Cloudflare Pages project for this repository. The included `.github/workflows/deploy.yml` deploys `dist/` on every push to `main` after tests pass. If you use the workflow, configure the project name in `CLOUDFLARE_PROJECT_NAME` and do not commit a Cloudflare token or account ID to the repository.
+
+The build settings used by the workflow are:
 
 ```text
 Build command: npm run build
@@ -56,6 +69,17 @@ ALLOWED_ORIGINS=https://your-site.example,https://www.your-site.example
 
 The Worker already permits `http://127.0.0.1:4317` and `http://localhost:4317` for local development. Do not use wildcard origins. Keep the service-role key and hash salt only in Pages’ server-side environment.
 
+The following values must remain Cloudflare Pages server-side runtime variables; they are not GitHub build variables and are never prefixed with `VITE_`:
+
+```text
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+IP_HASH_SALT
+ALLOWED_ORIGINS
+```
+
+Keep `SUPABASE_SERVICE_ROLE_KEY` and `IP_HASH_SALT` only in Cloudflare Pages’ encrypted environment. Do not copy them into GitHub Secrets for the build job unless a separate secret-management workflow is deliberately added.
+
 ## 4. Build and publish
 
 Run the checks and create the deployable output:
@@ -66,7 +90,7 @@ npm test
 npm run build
 ```
 
-Publish the generated `dist/` directory through your Cloudflare Pages workflow. Confirm that `dist/_worker.js` and `dist/_routes.json` are included alongside the static assets.
+The included workflow publishes the generated `dist/` directory through Cloudflare Pages. Confirm that `dist/_worker.js` and `dist/_routes.json` are included alongside the static assets.
 
 ## 5. Verify the deployment
 

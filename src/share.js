@@ -7,9 +7,11 @@ const INSET = 72;
 const FONT_SANS = '"Microsoft YaHei", "PingFang SC", sans-serif';
 const FONT_MONO = '"SFMono-Regular", Consolas, monospace';
 
-function numberAt(position, index) {
-  const value = Array.isArray(position) ? Number(position[index]) : 0;
-  return Number.isFinite(value) ? value : 0;
+function positionValues(position) {
+  const source = Array.isArray(position) || ArrayBuffer.isView(position) ? position : null;
+  if (!source || source.length < 3) return null;
+  const values = [Number(source[0]), Number(source[1]), Number(source[2])];
+  return values.every(Number.isFinite) ? values : null;
 }
 
 function signedFixed(value) {
@@ -22,7 +24,8 @@ function signedFixed(value) {
  * They describe this site's generated nebula, not a physical sky position.
  */
 export function formatStarCoordinates(position) {
-  return `(${signedFixed(numberAt(position, 0))}, ${signedFixed(numberAt(position, 1))}, ${signedFixed(numberAt(position, 2))})`;
+  const values = positionValues(position);
+  return values ? `(${signedFixed(values[0])}, ${signedFixed(values[1])}, ${signedFixed(values[2])})` : '';
 }
 
 function text(value, fallback = '') {
@@ -133,77 +136,76 @@ function drawSnapshotCover(context, image) {
   context.fillRect(0, 0, WIDTH, SNAPSHOT_HEIGHT);
 }
 
-function drawFocusMark(context, designation) {
-  const x = WIDTH / 2;
-  const y = SNAPSHOT_HEIGHT * 0.5;
-  context.save();
-  const glow=context.createRadialGradient(x,y,0,x,y,17);
-  glow.addColorStop(0,'rgba(255,240,207,.85)');glow.addColorStop(.15,'rgba(234,210,168,.4)');glow.addColorStop(1,'rgba(234,210,168,0)');
-  context.fillStyle=glow;context.fillRect(x-17,y-17,34,34);
-  context.strokeStyle = 'rgba(231, 212, 173, 0.34)';
-  context.lineWidth = 1;
-  context.setLineDash([4, 8]);
-  context.beginPath();
-  context.arc(x, y, 38, 0, Math.PI * 2);
-  context.stroke();
-  context.setLineDash([]);
-  context.strokeStyle = 'rgba(231, 212, 173, 0.20)';
-  context.beginPath();
-  context.moveTo(x - 58, y);
-  context.lineTo(x - 43, y);
-  context.moveTo(x + 43, y);
-  context.lineTo(x + 58, y);
-  context.moveTo(x, y - 58);
-  context.lineTo(x, y - 43);
-  context.moveTo(x, y + 43);
-  context.lineTo(x, y + 58);
-  context.stroke();
-  context.fillStyle = 'rgba(237, 222, 191, 0.66)';
-  context.font = `10px ${FONT_MONO}`;
-  context.textAlign = 'center';
-  context.letterSpacing = '1px';
-  context.fillText(designation.replace(/\s+/g, '-'), x, y + 72);
-  context.restore();
-}
-
-function ellipsize(context, value, maxWidth) {
-  if (context.measureText(value).width <= maxWidth) return value;
+function ellipsize(context, value, maxWidth, force = false) {
+  if (!force && context.measureText(value).width <= maxWidth) return value;
   const ellipsis = '…';
   let result = '';
   for (const character of Array.from(value)) {
     if (context.measureText(result + character + ellipsis).width > maxWidth) break;
     result += character;
   }
-  return result + ellipsis;
+  return result ? result + ellipsis : ellipsis;
 }
 
 function wrappedLines(context, value, maxWidth, maxLines = Infinity) {
-  const characters = Array.from(value || '');
+  const source = String(value || '');
+  if (!source) return [''];
   const lines = [];
   let line = '';
-  for (const character of characters) {
-    if (character === '\n') {
-      lines.push(line || ' ');
-      line = '';
-      if (lines.length >= maxLines) break;
-      continue;
-    }
-    if (line && context.measureText(line + character).width > maxWidth) {
-      lines.push(line);
-      line = character;
-      if (lines.length >= maxLines) break;
-    } else {
+  let pendingSpace = false;
+
+  const flush = () => {
+    if (!line) return;
+    lines.push(line);
+    line = '';
+    pendingSpace = false;
+  };
+
+  const appendLongToken = token => {
+    for (const character of Array.from(token)) {
+      if (line && context.measureText(line + character).width > maxWidth) flush();
       line += character;
     }
+  };
+
+  const paragraphs = source.split('\n');
+  paragraphs.forEach(paragraph => {
+    const tokens = paragraph.split(/(\s+)/u).filter(Boolean);
+    if (!tokens.length) {
+      lines.push(' ');
+      return;
+    }
+    for (const token of tokens) {
+      if (/^\s+$/u.test(token)) {
+        if (line) pendingSpace = true;
+        continue;
+      }
+      const separator = line && pendingSpace ? ' ' : '';
+      const candidate = line + separator + token;
+      if (!line || context.measureText(candidate).width <= maxWidth) {
+        line = candidate;
+        pendingSpace = false;
+        continue;
+      }
+      flush();
+      if (context.measureText(token).width <= maxWidth) line = token;
+      else appendLongToken(token);
+    }
+    flush();
+  });
+
+  const output = lines.slice(0, maxLines);
+  if (!output.length) return [''];
+  if (lines.length > output.length) {
+    output[output.length - 1] = ellipsize(context, output[output.length - 1], maxWidth, true);
   }
-  if (lines.length < maxLines && line) lines.push(line);
-  if (!lines.length) return [''];
-  const consumed = lines.join('').replaceAll(' ', '').length;
-  const sourceLength = value.replace(/\s/g, '').length;
-  if (lines.length === maxLines && consumed < sourceLength) {
-    lines[lines.length - 1] = ellipsize(context, lines[lines.length - 1], maxWidth);
+  // A lone punctuation mark is especially conspicuous on a social card. Fold
+  // it back into the preceding line (and ellipsize if necessary) instead.
+  if (output.length > 1 && /^[\s,.;:!?，。！？、；：]+$/u.test(output[output.length - 1])) {
+    const punctuation = output.pop();
+    output[output.length - 1] = ellipsize(context, output[output.length - 1] + punctuation, maxWidth);
   }
-  return lines;
+  return output;
 }
 
 function drawLines(context, lines, x, baseline, lineHeight) {
@@ -260,12 +262,15 @@ export async function createStarShare({ account = {}, designation, snapshot, sit
   const alias = limitCharacters(text(account.alias, catalog) || catalog, 32);
   const message = limitCharacters(text(account.message, t('share.defaultMessage')) || t('share.defaultMessage'), 180);
   const url = limitCharacters(text(siteUrl), 112);
-  const shareSlogan = text(slogan, sloganForLocale(resolvedLocale)) || sloganForLocale(resolvedLocale);
+  const shareSlogan = String(slogan ?? sloganForLocale(resolvedLocale))
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ')
+    .replace(/[^\S\n]+/g, ' ')
+    .trim() || sloganForLocale(resolvedLocale);
   const seed = `${account.id || catalog}:${account.date || ''}`;
 
   drawBackground(context, seed);
   drawSnapshotCover(context, image);
-  if (image) drawFocusMark(context, catalog);
 
   context.save();
   context.shadowColor = 'rgba(0, 0, 0, 0.58)';
@@ -286,7 +291,7 @@ export async function createStarShare({ account = {}, designation, snapshot, sit
   context.fillStyle = '#b8a483';
   context.font = `12px ${FONT_MONO}`;
   context.letterSpacing = '2.5px';
-  context.fillText(`CLAUDE ${t('share.afterlight').toUpperCase()}  /  ${t('share.record')}`, left, 620);
+  context.fillText(`${t('brand.title').toUpperCase()}  /  ${t('share.record')}`, left, 620);
   context.letterSpacing = '0px';
 
   context.fillStyle = '#eee6d9';
@@ -311,7 +316,7 @@ export async function createStarShare({ account = {}, designation, snapshot, sit
   drawLabel(context, `${t('share.coordinates')}  ·  XYZ`, left, coordinateY);
   context.fillStyle = '#d8cbbc';
   context.font = `17px ${FONT_MONO}`;
-  context.fillText(formatStarCoordinates(account.position), left, coordinateY + 31);
+  context.fillText(formatStarCoordinates(account.position) || t('share.coordinatesUnavailable'), left, coordinateY + 31);
   context.fillStyle = '#7f786e';
   context.font = `12px ${FONT_SANS}`;
   context.fillText(t('share.located'), left, coordinateY + 56);
@@ -357,7 +362,7 @@ export async function createStarShare({ account = {}, designation, snapshot, sit
   context.fillStyle = '#6f675c';
   context.font = `11px ${FONT_MONO}`;
   context.textAlign = 'right';
-  context.fillText(`AFTERLIGHT · ${t('share.afterlight')}`, right, 1401);
+  context.fillText('CLAUDE STARRY', right, 1401);
 
   const blob = await canvasToBlob(canvas,t('share.imageFailed'));
   return new File([blob], safeFilename(catalog, account), { type: 'image/png' });

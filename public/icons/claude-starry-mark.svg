@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Claude Starry</title>
+  <desc id="desc">A Claude-inspired twelve-ray mark emerging from a small star field.</desc>
+  <defs>
+    <linearGradient id="dust" x1="15" y1="10" x2="49" y2="54" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f4d3aa"/>
+      <stop offset=".55" stop-color="#d77950"/>
+      <stop offset="1" stop-color="#9f3d32"/>
+    </linearGradient>
+    <linearGradient id="core" x1="24" y1="24" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffe5b8"/>
+      <stop offset=".48" stop-color="#e98a55"/>
+      <stop offset="1" stop-color="#b84c35"/>
+    </linearGradient>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="1.7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- A compact particle galaxy: the opening scene's dust gathers into a warm core. -->
+  <g fill="url(#dust)" opacity=".88">
+    <circle cx="32" cy="8" r=".65"/><circle cx="37.6" cy="9.6" r=".42"/><circle cx="43.8" cy="13.2" r=".68"/>
+    <circle cx="50.2" cy="19.5" r=".42"/><circle cx="54.4" cy="26.7" r=".72"/><circle cx="55.2" cy="33.6" r=".4"/>
+    <circle cx="50.1" cy="43.2" r=".6"/><circle cx="44.2" cy="49.6" r=".42"/><circle cx="37.2" cy="53.8" r=".68"/>
+    <circle cx="29.1" cy="55.7" r=".42"/><circle cx="21.1" cy="52.2" r=".62"/><circle cx="14.8" cy="47.3" r=".4"/>
+    <circle cx="9.2" cy="39.9" r=".68"/><circle cx="8.6" cy="31.2" r=".42"/><circle cx="12.9" cy="22.7" r=".62"/>
+    <circle cx="18.3" cy="15.8" r=".42"/><circle cx="25.2" cy="10.8" r=".72"/>
+  </g>
+  <g fill="#ead7bc" opacity=".74">
+    <circle cx="18.4" cy="27.8" r=".68"/><circle cx="22.2" cy="20.7" r=".45"/><circle cx="27.3" cy="16.7" r=".58"/>
+    <circle cx="37.8" cy="16.2" r=".44"/><circle cx="44.7" cy="21.8" r=".66"/><circle cx="47.3" cy="30.5" r=".45"/>
+    <circle cx="45.3" cy="38.8" r=".6"/><circle cx="39.3" cy="45.2" r=".44"/><circle cx="30.7" cy="47.3" r=".62"/>
+    <circle cx="22.8" cy="43.2" r=".42"/><circle cx="17.5" cy="36.7" r=".6"/>
+  </g>
+
+  <!-- The bright center is the first point of light before it becomes a galaxy. -->
+  <g filter="url(#glow)">
+    <circle cx="32" cy="32" r="4.15" fill="#140c09" stroke="url(#core)" stroke-width="1.1"/>
+    <path d="M32 25.2 33.5 30.5 38.8 32 33.5 33.5 32 38.8 30.5 33.5 25.2 32 30.5 30.5 32 25.2Z" fill="url(#core)"/>
+    <circle cx="31.9" cy="32.1" r="1.35" fill="#fff4df"/>
+  </g>
+  <circle cx="21.3" cy="26.1" r=".85" fill="#e98a55"/>
+  <circle cx="43.5" cy="39.7" r=".7" fill="#f5ead7" opacity=".86"/>
+</svg>

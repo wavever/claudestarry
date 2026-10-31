@@ -1,18 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DEFAULT_CONFIG,CONFIG_STORAGE_KEY,normalizeConfig,loadConfig,entryProgress,easeValue,EASINGS} from './config.js';
+import {DEFAULT_CONFIG,CONFIG_STORAGE_KEY,normalizeConfig,clearLegacyConfig,defaultConfigForLocale,entryProgress,easeValue,EASINGS} from './config.js';
 
-test('preset sanitization clamps unsafe timing values and ignores unknown keys',()=>{
+test('saved config sanitization clamps unsafe timing values and ignores unknown keys',()=>{
   const c=normalizeConfig({textHold:-10,lightDuration:0,fontSize:1000,meteorDuration:'bad',textEase:'invalid',slogan:' ',unknown:'x'});
   assert.equal(c.textHold,0);assert.equal(c.lightDuration,.1);assert.equal(c.fontSize,96);
   assert.equal(c.meteorDuration,DEFAULT_CONFIG.meteorDuration);assert.equal(c.textEase,DEFAULT_CONFIG.textEase);
   assert.equal(c.slogan,DEFAULT_CONFIG.slogan);assert.ok(!('unknown' in c));
 });
-test('saved parameters load without affecting account storage',()=>{
-  const saved={...DEFAULT_CONFIG,textHold:2,slogan:'我的星光'};
-  const restored=loadConfig({getItem:key=>{assert.equal(key,CONFIG_STORAGE_KEY);return JSON.stringify(saved);}});
-  assert.deepEqual(restored,saved);
-  assert.deepEqual(loadConfig({getItem:()=>'{broken'}),DEFAULT_CONFIG);
+test('legacy debug presets are cleared so the opening sequence always plays',()=>{
+  const values=new Map([[CONFIG_STORAGE_KEY,JSON.stringify({animationMode:'nebula-freeze'})]]);
+  const storage={removeItem:key=>values.delete(key)};
+  assert.equal(clearLegacyConfig(storage),true);
+  assert.equal(values.has(CONFIG_STORAGE_KEY),false);
+  assert.equal(clearLegacyConfig({removeItem:()=>{throw new Error('blocked');}}),false);
+  assert.equal(defaultConfigForLocale('zh-CN').animationMode,'full');
+  assert.equal(defaultConfigForLocale('en').animationMode,'full');
 });
 test('entry stages use configurable delays and durations without changing settled particles',()=>{
   const c=normalizeConfig({lightDuration:1,textHold:2,textMorphDuration:2,logoHold:1,nebulaDuration:4});

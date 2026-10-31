@@ -4,8 +4,46 @@ import {sampleSlogan} from './text-layout.js';
 import {DEFAULT_CONFIG,normalizeConfig,easeValue,entryProgress} from './config.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { claudeLogoPosition } from './claude-field.js';
-import { dateToDay, HALF_LIFE, MIN_LIGHT, seededRandom, galaxyPosition, hashId, starProfile } from './model.js';
+import { accountStarSizeScale, dateToDay, HALF_LIFE, MIN_LIGHT, seededRandom, galaxyPosition, hashId, starProfile } from './model.js';
 
+const ACCOUNT_REVEAL_DURATION = 1.2;
+const STAR_PICK_MIN_LIGHT = .08;
+export const ACCOUNT_STAR_MIN_CSS_DIAMETER = 5.5;
+export const ACCOUNT_STAR_MAX_CSS_DIAMETER = 9;
+const ACCOUNT_STAR_MIN_DEPTH_FACTOR = .88;
+const ACCOUNT_STAR_MAX_DEPTH_FACTOR = 1.12;
+const ACCOUNT_STAR_SIZE_BREATH = .035;
+const ACCOUNT_STAR_TWINKLE_SPEED_MIN = .55;
+const ACCOUNT_STAR_TWINKLE_SPEED_RANGE = 1.05;
+
+// GLSL ES does not implicitly promote an integer literal for float-only
+// overloads such as clamp(). Template interpolation turns JavaScript's `9`
+// into `9`, so normalize every injected shader number to a float literal.
+export function glslFloatLiteral(value) {
+  if (!Number.isFinite(value)) throw new TypeError('GLSL float literal must be finite');
+  const literal = String(value);
+  return /[.e]/i.test(literal) ? literal : `${literal}.0`;
+}
+
+// gl_PointSize is measured in framebuffer pixels. Keep the public range in
+// CSS pixels, then scale it by Three's renderer pixel ratio in the shader.
+// The clipped point-sprite disc is the measured diameter; its inner glow is
+// intentionally a brightness gradient inside that disc, not extra geometry.
+export function accountStarCssDiameter(scale, depth, referenceDepth, twinkle = 0, motion = 1) {
+  const normalizedScale = Math.min(1, Math.max(0, Number.isFinite(scale) ? scale : 0));
+  const safeDepth = Math.max(.01, Number.isFinite(depth) ? depth : .01);
+  const safeReferenceDepth = Math.max(.01, Number.isFinite(referenceDepth) ? referenceDepth : safeDepth);
+  const depthFactor = Math.min(ACCOUNT_STAR_MAX_DEPTH_FACTOR, Math.max(ACCOUNT_STAR_MIN_DEPTH_FACTOR, safeReferenceDepth / safeDepth));
+  const safeTwinkle = Math.min(1, Math.max(-1, Number.isFinite(twinkle) ? twinkle : 0));
+  const safeMotion = Math.min(1, Math.max(0, Number.isFinite(motion) ? motion : 0));
+  const pulse = 1 + safeTwinkle * ACCOUNT_STAR_SIZE_BREATH * safeMotion;
+  return Math.min(ACCOUNT_STAR_MAX_CSS_DIAMETER, Math.max(ACCOUNT_STAR_MIN_CSS_DIAMETER,
+    (ACCOUNT_STAR_MIN_CSS_DIAMETER + normalizedScale * (ACCOUNT_STAR_MAX_CSS_DIAMETER - ACCOUNT_STAR_MIN_CSS_DIAMETER)) * depthFactor * pulse));
+}
+
+export function accountStarFramebufferDiameter(cssDiameter, pixelRatio = 1) {
+  return cssDiameter * Math.max(.01, Number.isFinite(pixelRatio) ? pixelRatio : 1);
+}
 
 const starVertex = `
 attribute float aBorn;
@@ -16,6 +54,7 @@ attribute float aScale;
 attribute float aPhase;
 attribute float aSpeed;
 attribute float aArrival;
+attribute float aEntryReveal;
 uniform float uDay;
 uniform float uTime;
 uniform float uDpr;
@@ -23,18 +62,20 @@ uniform float uHalfLife;
 uniform float uFloor;
 uniform float uMotion;
 uniform float uTwinkleDecay;
+uniform float uAccountReveal;
+uniform float uReferenceDepth;
 varying float vLight;
 varying float vScale;
 varying float vPulse;
 varying float vNearFade;
 void main() {
-  // 用户新增的粒子始终为最大亮度
-  vLight = aVisible;
+  // Meteor landings bypass the entry fade; initial stars wait for the nebula.
+  vLight = aVisible * mix(1.0, uAccountReveal, aEntryReveal);
   vScale = aScale;
 
-  // 轻微有机闪动效果（亮度与尺寸微微呼吸闪烁，随机异步节奏）
-  float tw = sin(uTime * aSpeed + aPhase) * 0.65 + sin(uTime * (aSpeed * 1.73 + 0.35) + aPhase * 2.1) * 0.35;
-  float amplitude = 0.26 * uMotion;
+  // Two incommensurate waves make each stable ID breathe independently.
+  float tw = sin(uTime * aSpeed + aPhase) * 0.62 + sin(uTime * (aSpeed * 1.618 + 0.17) + aPhase * 1.73) * 0.38;
+  float amplitude = 0.18 * uMotion;
   vPulse = 1.0 + tw * amplitude;
 
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
@@ -42,10 +83,12 @@ void main() {
   vNearFade = smoothstep(.012, .10, depth);
   gl_Position = projectionMatrix * mv;
 
-  // 尺寸随闪动带来微弱的星光膨胀/收缩感（±10%）
-  float sizePulse = 1.0 + (tw * 0.10) * uMotion;
-  // 全景视点下直径为 5.5px ~ 9.0px
-  gl_PointSize = clamp((5.5 + aScale * 3.5) * uDpr * (44.0 / depth) * sizePulse, 3.5 * uDpr, (11.0 + aScale * 4.0) * uDpr * 1.15);
+  // Preserve a little relative-depth parallax without letting zoom or DPR
+  // break the required 5.5px–9px CSS visual diameter.
+  float depthFactor = clamp(uReferenceDepth / depth, ${glslFloatLiteral(ACCOUNT_STAR_MIN_DEPTH_FACTOR)}, ${glslFloatLiteral(ACCOUNT_STAR_MAX_DEPTH_FACTOR)});
+  float sizePulse = 1.0 + clamp(tw, -1.0, 1.0) * ${glslFloatLiteral(ACCOUNT_STAR_SIZE_BREATH)} * uMotion;
+  float cssDiameter = clamp((${glslFloatLiteral(ACCOUNT_STAR_MIN_CSS_DIAMETER)} + clamp(aScale, 0.0, 1.0) * ${glslFloatLiteral(ACCOUNT_STAR_MAX_CSS_DIAMETER - ACCOUNT_STAR_MIN_CSS_DIAMETER)}) * depthFactor * sizePulse, ${glslFloatLiteral(ACCOUNT_STAR_MIN_CSS_DIAMETER)}, ${glslFloatLiteral(ACCOUNT_STAR_MAX_CSS_DIAMETER)});
+  gl_PointSize = cssDiameter * uDpr;
 }`;
 const starFragment = `
 varying float vLight;
@@ -55,7 +98,7 @@ varying float vNearFade;
 void main() {
   vec2 q = gl_PointCoord - 0.5;
   float r2 = dot(q, q);
-  if(r2 > 0.25 || vLight <= 0.0) discard;
+  if(r2 > 0.25 || vLight <= 0.001) discard;
 
   // 保持与其他粒子一致的自然圆形分布与微弱发光
   float core = exp(-r2 * 55.0);
@@ -65,9 +108,9 @@ void main() {
   // 纯净高亮恒星暖白
   vec3 starColor = mix(vec3(0.96, 0.95, 0.92), vec3(1.0, 1.0, 1.0), core);
 
-  // 用户新增粒子保持最大亮度，带有自然的微弱发光
+  // The entry reveal fades light rather than only toggling visibility.
   float intensity = glow * vPulse * vNearFade * (1.10 + vScale * 0.25);
-  gl_FragColor = vec4(starColor * intensity, 1.0);
+  gl_FragColor = vec4(starColor * intensity * vLight, vLight);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`;
@@ -190,6 +233,7 @@ export class Universe {
     this.container=container; this.callbacks={onHover,onSelect,onFrame,onReady,onNebulaReady,onError};
     this.nebulaReadyFired=false;
     this.accounts=accounts; this.reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.accountReveal=this.initialAccountReveal();
     this.renderer=new THREE.WebGLRenderer({antialias:false,alpha:false,powerPreference:'high-performance'});
     this.renderer.setClearColor(0x020202);
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
@@ -216,7 +260,7 @@ export class Universe {
     this.zoomTarget=this.camera.position.distanceTo(this.controls.target);
     this.group=new THREE.Group();this.group.rotation.z=-.07;this.group.rotation.y=-.05;this.group.rotation.x=.04;this.group.position.x=0;
     this.scene.add(this.group);
-    this.uniforms={uDay:{value:dateToDay(new Date().toISOString().slice(0,10))},uTime:{value:0},uDpr:{value:this.renderer.getPixelRatio()},uHalfLife:{value:HALF_LIFE},uFloor:{value:MIN_LIGHT},uMotion:{value:this.reduced?0:1},uFormation:{value:this.reduced?1:0},uTextMorph:{value:this.reduced?1:0},uTextReveal:{value:this.reduced?1:0},uEntryFade:{value:1},uTextParticleSize:{value:this.config.textParticleSize},uTwinkleDecay:{value:this.config.twinkleDecay}};
+    this.uniforms={uDay:{value:dateToDay(new Date().toISOString().slice(0,10))},uTime:{value:0},uDpr:{value:this.renderer.getPixelRatio()},uHalfLife:{value:HALF_LIFE},uFloor:{value:MIN_LIGHT},uMotion:{value:this.reduced?0:1},uFormation:{value:this.reduced?1:0},uTextMorph:{value:this.reduced?1:0},uTextReveal:{value:this.reduced?1:0},uEntryFade:{value:1},uTextParticleSize:{value:this.config.textParticleSize},uTwinkleDecay:{value:this.config.twinkleDecay},uAccountReveal:{value:this.accountReveal},uReferenceDepth:{value:this.home.length()}};
     this.starMaterial=new THREE.ShaderMaterial({uniforms:this.uniforms,vertexShader:starVertex,fragmentShader:starFragment,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending});
     this.setAccounts(accounts);
     this.addHistory();
@@ -226,8 +270,10 @@ export class Universe {
     this.raycaster=new THREE.Raycaster();
     this.mouse=new THREE.Vector2();this.pointerDown=null;this.selected=-1;this.hovered=-1;
     this.entryClock=new EntryClock(this.config);this.entrySkipped=false;
-    this.time=0;this.last=performance.now();this.start=this.last;this.ready=false;this.disposed=false;
+    this.time=0;this.last=performance.now();this.start=this.last;this.loopStartTime=this.last;this.ready=false;this.disposed=false;
     this.focusTween=null;this.introActive=false;
+    this.cardView=false;this.cardSide='right';
+    this.viewOffset={x:0,y:0};this.viewOffsetTween=null;
     this.resize=()=>this.onResize();
     addEventListener('resize',this.resize);
     this.onResize();
@@ -242,17 +288,79 @@ export class Universe {
   setAriaLabel(label) {
     if (typeof label === 'string' && label) this.renderer?.domElement?.setAttribute('aria-label',label);
   }
+  setSlogan(slogan){
+    if(typeof slogan!=='string'||!slogan.trim()||this.config.slogan===slogan)return;
+    this.config.slogan=slogan;
+    // Once the words have morphed away, keep the current camera and geometry.
+    if(!this.history||this.uniforms.uTextMorph.value>=1)return;
+    const camera=this.camera;
+    const previous={fov:camera.fov,aspect:camera.aspect,quaternion:camera.quaternion.clone(),projection:camera.projectionMatrix.clone(),inverse:camera.projectionMatrixInverse.clone()};
+    let points;
+    try{points=this.sampleEntryText();}
+    finally{
+      camera.fov=previous.fov;camera.aspect=previous.aspect;camera.quaternion.copy(previous.quaternion);
+      camera.projectionMatrix.copy(previous.projection);camera.projectionMatrixInverse.copy(previous.inverse);camera.updateMatrixWorld();
+    }
+    if(!points?.length)return;
+    const geometry=this.history.geometry,positions=geometry.attributes.aTextPosition,visible=geometry.attributes.aTextVisible;
+    for(let i=this.historyBaseCount;i<positions.count;i++){
+      const n=i-this.historyBaseCount,point=points[n%points.length];
+      positions.setXYZ(i,point[0],point[1],point[2]);visible.setX(i,n<points.length?1:0);
+    }
+    positions.needsUpdate=true;visible.needsUpdate=true;
+  }
+  initialAccountReveal(){
+    const mode=this.config?.animationMode||'full';
+    return mode==='nebula-freeze'||(this.reduced&&mode!=='slogan-freeze'&&mode!=='slogan-loop')?1:0;
+  }
+  controlsReadyForNebula(formation,mode){
+    return formation>0||this.entrySkipped||mode==='nebula-freeze';
+  }
+  entryAccountReveal(entryTime){
+    if(this.reduced)return 1;
+    const c=this.config;
+    const nebulaEnd=c.lightDuration+c.textHold+c.textMorphDuration+c.logoHold+c.nebulaDuration;
+    return easeValue('easeOutCubic',(entryTime-nebulaEnd)/ACCOUNT_REVEAL_DURATION);
+  }
+  loopAccountReveal(cycleElapsed){
+    return this.reduced?1:easeValue('easeOutCubic',(cycleElapsed-this.config.nebulaDuration)/ACCOUNT_REVEAL_DURATION);
+  }
+  setAccountReveal(value){
+    const reveal=THREE.MathUtils.clamp(Number.isFinite(value)?value:0,0,1);
+    this.accountReveal=reveal;
+    if(this.uniforms?.uAccountReveal)this.uniforms.uAccountReveal.value=reveal;
+  }
+  accountEntryAttribute(){return this.stars?.geometry?.attributes?.aEntryReveal;}
+  setAccountEntryReveal(index,value){
+    const attribute=this.accountEntryAttribute();
+    if(!attribute||index<0||index>=attribute.count)return;
+    attribute.setX(index,value);attribute.needsUpdate=true;
+  }
+  stageAccountsForEntry(){
+    const attribute=this.accountEntryAttribute();
+    if(!attribute)return;
+    for(let index=0;index<attribute.count;index++)attribute.setX(index,1);
+    attribute.needsUpdate=true;
+  }
+  isAccountStarVisible(index){
+    const attributes=this.stars?.geometry?.attributes;
+    const visible=attributes?.aVisible?.getX(index)??0;
+    if(visible<=0)return false;
+    const entryReveal=attributes?.aEntryReveal?.getX(index)??0;
+    const reveal=entryReveal>0?(this.accountReveal??this.uniforms?.uAccountReveal?.value??0):1;
+    return reveal>STAR_PICK_MIN_LIGHT;
+  }
   setAccounts(accounts) {
     const arrivalsById=new Map((this.accounts??[]).map((a,i)=>[a.id,this.stars?.geometry.attributes.aArrival?.getX(i)??-10000]));
+    const stagedById=new Map((this.accounts??[]).map((a,i)=>[a.id,this.stars?.geometry.attributes.aEntryReveal?.getX(i)??(this.accountReveal<1?1:0)]));
     const activeMeteorId=this.meteor?.id;
     this.accounts=accounts;
-    const positions=[],born=[],scales=[],phases=[],speeds=[],peaks=[],halfLives=[],visible=[],arrivals=[];
+    const positions=[],born=[],scales=[],phases=[],speeds=[],peaks=[],halfLives=[],visible=[],arrivals=[],entryReveals=[];
     const todayDay = dateToDay(new Date().toISOString().slice(0, 10));
-    const minClaudeDay = dateToDay('2021-01-26');
-    const maxLifespan = Math.max(365, todayDay - minClaudeDay);
 
     accounts.forEach(a=>{
       arrivals.push(arrivalsById.get(a.id)??-10000);
+      entryReveals.push(stagedById.get(a.id)??(this.accountReveal<1?1:0));
       peaks.push(1.0);
       halfLives.push(120);
       // Geometry is recreated on every merged record update. Preserve the
@@ -261,18 +369,14 @@ export class Universe {
       positions.push(...a.position);
       born.push(dateToDay(a.date));
 
-      // 存活时间控制粒子大小：平滑映射为 0.0 ~ 1.0，对应直径 5.5px ~ 9.0px
-      const accDateDay = dateToDay(a.date);
-      const life = a.started
-        ? Math.max(1, accDateDay - dateToDay(a.started) + 1)
-        : Math.max(30, Math.round((accDateDay - minClaudeDay) * 0.4));
-      const lifeProgress = Math.min(1.0, Math.max(0.0, (Math.log1p(life) - Math.log1p(1)) / (Math.log1p(maxLifespan) - Math.log1p(1))));
-      scales.push(lifeProgress);
+      // Online duration wins when supplied; otherwise the disabled date is the
+      // available chronology signal. Both routes produce a stable 0–1 size.
+      scales.push(accountStarSizeScale(a,todayDay));
 
-      const r=seededRandom(hashId(a.id));
-      phases.push(r()*Math.PI*2);
-      // 每个粒子独立的呼吸节奏速度 (1.3 ~ 3.8 rad/s)
-      speeds.push(1.3 + r() * 2.5);
+      // Stable ID-derived seeds preserve a star's own rhythm across refreshes,
+      // realtime merges, and array reordering.
+      phases.push(seededRandom(hashId(`${a.id}:twinkle-phase`))()*Math.PI*2);
+      speeds.push(ACCOUNT_STAR_TWINKLE_SPEED_MIN + seededRandom(hashId(`${a.id}:twinkle-speed`))()*ACCOUNT_STAR_TWINKLE_SPEED_RANGE);
     });
     const g=new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
@@ -284,6 +388,7 @@ export class Universe {
     g.setAttribute('aPhase',new THREE.Float32BufferAttribute(phases,1));
     g.setAttribute('aSpeed',new THREE.Float32BufferAttribute(speeds,1));
     g.setAttribute('aArrival',new THREE.Float32BufferAttribute(arrivals,1));
+    g.setAttribute('aEntryReveal',new THREE.Float32BufferAttribute(entryReveals,1));
     if(this.stars){this.group.remove(this.stars);this.stars.geometry.dispose();}
     this.stars=new THREE.Points(g,this.starMaterial);this.stars.name='account-stars';this.group.add(this.stars);
     if(this.meteor){
@@ -341,7 +446,7 @@ export class Universe {
     this.uniforms.uTextParticleSize.value=this.config.textParticleSize;
     this.uniforms.uTwinkleDecay.value=this.config.twinkleDecay;
     this.home.set(0,1.8,this.width<700?this.config.mobileHomeDistance:this.config.homeDistance);
-    this.camera.position.copy(this.home);this.controls.target.set(0,0,0);this.setCardView(false);this.controls.update();
+    this.camera.position.copy(this.home);this.controls.target.set(0,0,0);this.setCardView(false,'right',{immediate:true});this.controls.update();
     const previous=this.history;
     this.addHistory();
     this.group.remove(previous);previous.geometry.dispose();previous.material.dispose();
@@ -356,9 +461,11 @@ export class Universe {
     this.entryClock=new EntryClock(this.config);this.entrySkipped=false;this.focusTween=null;this.introActive=false;
     this.nebulaReadyFired=false;
     this.loopStartTime=performance.now();
-    this.camera.position.copy(this.home);this.controls.target.set(0,0,0);this.setCardView(false);this.controls.update();this.syncZoomTarget();
+    this.camera.position.copy(this.home);this.controls.target.set(0,0,0);this.setCardView(false,'right',{immediate:true});this.controls.update();this.syncZoomTarget();
     this.history.geometry.setDrawRange(0,Infinity);
     const mode=this.config.animationMode||'full';
+    this.stageAccountsForEntry();
+    this.setAccountReveal(this.initialAccountReveal());
     if(mode==='slogan-freeze'){
       this.uniforms.uFormation.value=0;
       this.uniforms.uTextMorph.value=0;
@@ -450,6 +557,11 @@ export class Universe {
   }
   getRenderPixelRatio(){
     return Math.min(window.devicePixelRatio||1,1);
+  }
+  syncStarReferenceDepth(){
+    const target=this.controls?.target;
+    const depth=target?this.camera?.position?.distanceTo(target):NaN;
+    if(Number.isFinite(depth)&&depth>.01&&this.uniforms?.uReferenceDepth)this.uniforms.uReferenceDepth.value=depth;
   }
   addDistantDust() {
     const r=seededRandom(81),p=[];
@@ -554,7 +666,7 @@ export class Universe {
     this.raycaster.setFromCamera(this.mouse,this.camera);
     const hits=this.raycaster.intersectObject(this.stars);
     let best=null,bestDist=innerWidth<700?22:14;
-    for(const hit of hits){const p=this.project(hit.index);const d=Math.hypot(p.x-x,p.y-y);if(this.stars.geometry.attributes.aVisible.getX(hit.index)>0.0&&p.visible&&d<bestDist){best=hit.index;bestDist=d;}}
+    for(const hit of hits){const p=this.project(hit.index);const d=Math.hypot(p.x-x,p.y-y);if(this.isAccountStarVisible(hit.index)&&p.visible&&d<bestDist){best=hit.index;bestDist=d;}}
     return best;
   }
   projectPoint(x=0, y=0, z=0) {
@@ -573,15 +685,31 @@ export class Universe {
     const p=new THREE.Vector3(...a.position);this.group.localToWorld(p);p.project(this.camera);
     return {x:(p.x+1)*this.width/2,y:(1-p.y)*this.height/2,visible:p.z>-1&&p.z<1&&Math.abs(p.x)<1.05&&Math.abs(p.y)<1.05};
   }
-  focus(index, {duration=this.config.focusDuration*1000, delay=this.config.focusDelay*1000}={}) {
+  focus(index, {duration=this.config.focusDuration*1000, delay=this.config.focusDelay*1000, preserveDistance=false, preserveViewOffset=false}={}) {
     this.selected=-1;this.introActive=false;
-    this.camera.clearViewOffset();this.camera.updateProjectionMatrix();
+    // A card-to-card cycle owns an already-safe view offset. Clearing and
+    // immediately restoring it makes the field visibly jump sideways, so keep
+    // it intact when the caller is continuing that card view. Otherwise the
+    // offset eases back to centre in step with the camera move.
+    if(!preserveViewOffset)this.setViewOffsetTarget(0,0);
     this.group.updateMatrixWorld(true);
     const target=new THREE.Vector3(...this.accounts[index].position);this.group.localToWorld(target);
-    const direction=this.camera.position.clone().sub(this.controls.target).normalize();
-    const distance=this.width<700?14:12;
+    const direction=this.camera.position.clone().sub(this.controls.target);
+    if(direction.lengthSq()<1e-8)direction.set(0,0,1);
+    direction.normalize();
+    const currentDistance=this.camera.position.distanceTo(this.controls.target);
+    const fallbackDistance=this.width<700?36:24;
+    const distance=preserveDistance&&Number.isFinite(currentDistance)&&currentDistance>0
+      ?THREE.MathUtils.clamp(currentDistance,this.controls.minDistance,this.controls.maxDistance)
+      :fallbackDistance;
     this.zoomTarget=distance;
-    this.focusTween={start:performance.now()+delay,from:this.camera.position.clone(),fromTarget:this.controls.target.clone(),to:target.clone().add(direction.multiplyScalar(distance)),toTarget:target,duration,ease:this.config.focusEase};
+    const to=target.clone().add(direction.multiplyScalar(distance));
+    if(this.reduced){
+      this.camera.position.copy(to);this.controls.target.copy(target);this.focusTween=null;this.syncZoomTarget();
+      return null;
+    }
+    this.focusTween={start:performance.now()+delay,from:this.camera.position.clone(),fromTarget:this.controls.target.clone(),to,toTarget:target,duration,ease:this.config.focusEase};
+    return this.focusTween;
   }
   reset() {
     this.introActive=false;
@@ -615,6 +743,9 @@ export class Universe {
     const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));geo.setAttribute('color',new THREE.BufferAttribute(colors,3));geo.setAttribute('aFade',new THREE.BufferAttribute(fades,1));
     const trailMaterial=new THREE.ShaderMaterial({uniforms:{uDpr:this.uniforms.uDpr,uOpacity:{value:.65}},vertexShader:meteorTrailVertex,fragmentShader:meteorTrailFragment,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending});
     const trail=new THREE.Points(geo,trailMaterial);trail.frustumCulled=false;this.group.add(trail);
+    // A live arrival owns its reveal: its landing must not wait for the initial
+    // nebula sequence, and it must not be mistaken for an initial meteor later.
+    this.setAccountEntryReveal(index,0);
     this.stars.geometry.attributes.aVisible.setX(index,0);this.stars.geometry.attributes.aVisible.needsUpdate=true;
     this.meteor={id:account.id,index,start:performance.now(),curve,head,trail,profile,landed:false,focusOnLand:focus,onLand};
     return true;
@@ -654,22 +785,62 @@ export class Universe {
     if(interrupted)this.syncZoomTarget();
     this.zoomTarget=THREE.MathUtils.clamp(this.zoomTarget*factor,this.controls.minDistance,this.controls.maxDistance);
   }
-  setCardView(active, side = 'right'){
+  // Projection offsets for the card layout are animated rather than snapped.
+  // The camera tween and the frustum shift therefore land together, and the
+  // focused star glides toward its resting place instead of jumping sideways.
+  viewOffsetTargetFor(active, side = 'right'){
+    if(!active)return {x:0,y:0};
+    if(this.width < 700)return {x:0,y:this.height * (this.height < 740 ? .37 : .22)};
+    return {x:side === 'right' ? 180 : -180,y:0};
+  }
+  setViewOffsetTarget(x, y, {immediate = false, duration = (this.config?.focusDuration ?? 1.5) * 1000} = {}){
+    if(!this.viewOffset){
+      const view=this.camera.view;
+      this.viewOffset=view?.enabled?{x:view.offsetX,y:view.offsetY}:{x:0,y:0};
+    }
+    const settled=Math.abs(this.viewOffset.x-x) < .01 && Math.abs(this.viewOffset.y-y) < .01;
+    if(immediate || this.reduced || settled || !(duration > 0)){
+      this.viewOffset={x,y};
+      this.viewOffsetTween=null;
+      this.applyViewOffset();
+      return null;
+    }
+    this.viewOffsetTween={start:performance.now(),from:{...this.viewOffset},to:{x,y},duration,ease:this.config?.focusEase ?? 'smoothstep'};
+    return this.viewOffsetTween;
+  }
+  applyViewOffset(){
+    const view=this.viewOffset || {x:0,y:0};
+    if(Math.abs(view.x) < .001 && Math.abs(view.y) < .001){
+      if(this.camera.view?.enabled)this.camera.clearViewOffset();
+      return;
+    }
+    const current=this.camera.view;
+    if(current?.enabled && current.offsetX === view.x && current.offsetY === view.y && current.width === this.width && current.height === this.height)return;
+    this.camera.setViewOffset(this.width,this.height,view.x,view.y,this.width,this.height);
+  }
+  updateViewOffset(now){
+    const tween=this.viewOffsetTween;
+    if(!tween)return;
+    const t=Math.min(1,Math.max(0,(now - tween.start) / Math.max(1,tween.duration)));
+    const ease=easeValue(tween.ease,t);
+    this.viewOffset={
+      x:tween.from.x + (tween.to.x - tween.from.x) * ease,
+      y:tween.from.y + (tween.to.y - tween.from.y) * ease,
+    };
+    if(t===1){
+      this.viewOffset={...tween.to};
+      this.viewOffsetTween=null;
+    }
+    this.applyViewOffset();
+  }
+  setCardView(active, side = 'right', {immediate = false} = {}){
     this.cardView = active;
     this.cardSide = side;
-    if(active){
-      if(this.width < 700){
-        this.camera.setViewOffset(this.width, this.height, 0, this.height * (this.height < 740 ? .37 : .22), this.width, this.height);
-      } else {
-        const xOffset = side === 'right' ? 180 : -180;
-        this.camera.setViewOffset(this.width, this.height, xOffset, 0, this.width, this.height);
-      }
-    } else {
-      this.camera.clearViewOffset();
-    }
-    this.camera.updateProjectionMatrix();
+    const target=this.viewOffsetTargetFor(active,side);
+    this.setViewOffsetTarget(target.x,target.y,{immediate});
   }
   captureFrame({preserveView=false}={}){
+    this.syncStarReferenceDepth();
     if(preserveView){
       this.renderer.render(this.scene,this.camera);
       return this.renderer.domElement.toDataURL('image/png');
@@ -687,17 +858,20 @@ export class Universe {
   setDay(day){this.uniforms.uDay.value=day;}
   setSelection(index){
     this.selected=index;
+    // The card view owns the projection offset; resizing re-applies it right
+    // after this call, so never let the selection logic pull it to zero first.
+    if(this.cardView)return;
     // Keep a focused star above the mobile details sheet.
-    if(this.width<700&&index>=0)this.camera.setViewOffset(this.width,this.height,0,this.height*.2,this.width,this.height);
-    else this.camera.clearViewOffset();
-    this.camera.updateProjectionMatrix();
+    if(this.width<700&&index>=0)this.setViewOffsetTarget(0,this.height*.2);
+    else this.setViewOffsetTarget(0,0);
   }
   onResize(){
     this.width=Math.max(1,this.container.clientWidth);this.height=Math.max(1,this.container.clientHeight);
     this.camera.aspect=this.width/this.height;
     this.camera.fov=this.width<700?62:48;
     this.setSelection(this.selected??-1);
-    if(this.cardView)this.setCardView(true, this.cardSide || 'right');
+    // A viewport change is an instant layout update, not a camera move.
+    if(this.cardView)this.setCardView(true, this.cardSide || 'right', {immediate:true});
     const pixelRatio=this.getRenderPixelRatio();
     if(pixelRatio!==this.pixelRatio){
       this.pixelRatio=pixelRatio;
@@ -714,6 +888,7 @@ export class Universe {
     if(!this.reduced)this.time+=dt;
     this.uniforms.uTime.value=this.time;
     const mode=this.config.animationMode||'full';
+    let accountReveal=0;
     if(mode==='slogan-freeze'){
       this.uniforms.uFormation.value=0;
       this.uniforms.uTextMorph.value=0;
@@ -747,6 +922,7 @@ export class Universe {
       this.uniforms.uFormation.value=this.reduced?1:formation;
       this.uniforms.uEntryFade.value=1;
       if(this.cloud)this.cloud.material.opacity=(.08+.92*formation);
+      accountReveal=this.loopAccountReveal(cycleElapsed);
     }else if(mode==='nebula-freeze'){
       this.uniforms.uTextReveal.value=1;
       this.uniforms.uTextMorph.value=1;
@@ -754,6 +930,7 @@ export class Universe {
       this.uniforms.uEntryFade.value=1;
       if(this.cloud)this.cloud.material.opacity=1;
       if(this.history.geometry.drawRange.count!==this.historyBaseCount)this.history.geometry.setDrawRange(0,this.historyBaseCount);
+      accountReveal=1;
     }else{
       // 默认完整流程
       const entryTime=this.entrySkipped?100:this.entryClock.frame(now);
@@ -766,10 +943,15 @@ export class Universe {
       this.uniforms.uEntryFade.value=1;
       if(formation===1&&this.history.geometry.drawRange.count!==this.historyBaseCount)this.history.geometry.setDrawRange(0,this.historyBaseCount);
       if(this.cloud)this.cloud.material.opacity=(.08+.92*formation)*textMorph;
+      accountReveal=this.entryAccountReveal(entryTime);
       this.entryClock.presented(performance.now());
     }
+    this.setAccountReveal(accountReveal);
     const curFormation = this.uniforms.uFormation.value;
-    if(!this.nebulaReadyFired && (curFormation >= 0.99 || this.entrySkipped || mode === 'nebula-freeze')){
+    // The dock should arrive with the first visible nebula, not wait for the
+    // cloud to reach its final opacity. `formation` is exactly zero before
+    // that stage, so the first positive frame is the natural handoff point.
+    if(!this.nebulaReadyFired && this.controlsReadyForNebula(curFormation,mode)){
       this.nebulaReadyFired = true;
       this.callbacks.onNebulaReady?.();
     }
@@ -783,9 +965,11 @@ export class Universe {
       this.camera.position.lerpVectors(f.from,f.to,ease);this.controls.target.lerpVectors(f.fromTarget,f.toTarget,ease);
       if(t===1){this.focusTween=null;this.syncZoomTarget();}
     }
+    this.updateViewOffset(now);
     this.controls.update(dt);
     this.updateZoom(dt);
     this.updateMeteor(now);
+    this.syncStarReferenceDepth();
     this.callbacks.onFrame(dt);
     this.renderer.render(this.scene,this.camera);
     this.entryClock.presented(performance.now());

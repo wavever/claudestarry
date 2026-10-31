@@ -5,14 +5,14 @@ export const EASINGS = ['linear','smoothstep','easeInQuad','easeInCubic','easeOu
 export const ANIMATION_MODES = ['full','slogan-freeze','slogan-loop','nebula-loop','nebula-freeze'];
 export const DEFAULT_CONFIG = Object.freeze({
   animationMode:'full',
-  slogan:'你的 Claude 账号没有消失，\n只是从此不再回应，化作了星河里的一点光',
+  slogan:'被停用的 Claude 账号没有消失，\n只是从此不再回应，化作了星河里的一点光',
   fontFamily:'"PingFang SC", "Microsoft YaHei", sans-serif',
   fontSize:54,mobileFontSize:34,fontWeight:500,textParticleSize:1.3,textSampleStep:3.0,
   lineHeight:80,mobileLineHeight:52,
   lightDuration:2,lightEase:'linear',textHold:1,textMorphDuration:1.7,textEase:'easeInCubic',
   logoHold:.6,nebulaDuration:6,nebulaEase:'smoothstep',
   meteorDuration:1.85,meteorEase:'linear',meteorTail:.17,focusDuration:1.5,focusDelay:.08,focusEase:'smoothstep',
-  twinkleDecay:8,homeDistance:44,mobileHomeDistance:74,
+  twinkleDecay:8,homeDistance:44,mobileHomeDistance:62,
 });
 export function defaultConfigForLocale(locale){
   return {...DEFAULT_CONFIG,slogan:sloganForLocale(locale)};
@@ -37,8 +37,11 @@ export function normalizeConfig(input={},defaults=DEFAULT_CONFIG){
   if(typeof input.fontFamily==='string'&&input.fontFamily.trim())clean.fontFamily=input.fontFamily.trim().slice(0,200);
   return clean;
 }
-export function loadConfig(storage,defaults=DEFAULT_CONFIG){
-  try{return normalizeConfig(JSON.parse(storage.getItem(CONFIG_STORAGE_KEY)||'null'),defaults);}catch{return {...defaults};}
+// The animation tuning panel was a development-only tool. Its saved presets
+// must never skip the opening sequence again, so remove the legacy key before
+// the first frame and always boot from the shipped defaults.
+export function clearLegacyConfig(storage){
+  try{storage?.removeItem?.(CONFIG_STORAGE_KEY);return true;}catch{return false;}
 }
 export function easeValue(name,t){
   const x=Math.max(0,Math.min(1,t));

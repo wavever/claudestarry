@@ -10,13 +10,15 @@ Claude Starry is an unofficial, community-made memorial for disabled Claude acco
 
 ## Demo
 
+The original recording is split into two players to fit GitHub's upload limit; all animations and original video quality are preserved.
+
 Part 1
 
-https://github.com/user-attachments/assets/df5bb735-d866-48a1-9db1-1aa855a590be
+https://github.com/user-attachments/assets/58bb6f66-f6b6-43dc-9756-63772fdd78cd
 
 Part 2
 
-https://github.com/user-attachments/assets/9117a77a-3023-4567-bc9c-1202bb0583cd
+https://github.com/user-attachments/assets/c42fdcf6-5597-49c3-bc30-a5bdb104863f
 
 [Download the full original recording](docs/demo.mp4)
 

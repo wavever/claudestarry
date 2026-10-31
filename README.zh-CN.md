@@ -46,7 +46,7 @@ npm run build
 1. 创建自己的 Supabase 项目，并按文件名顺序执行 `supabase/migrations/` 中的全部 SQL 迁移。
 2. 将 `.env.example` 复制为 `.env.production.local`，填写自己的公开 Supabase URL、匿名 key 和站点 URL。
 3. 在 Cloudflare Pages Worker 中配置仅服务端可见的密钥，并设置精确的 `ALLOWED_ORIGINS` 列表。
-4. 在 GitHub 的 production environment 中配置部署 workflow 所需的 Secrets；推送到 `main` 后，GitHub Actions 会在测试通过后自动将 `dist/` 发布到 Cloudflare Pages。
+4. 保持 Cloudflare Pages 项目连接到这个 GitHub 仓库；推送到 `main` 后，Pages 会按项目配置自动构建并发布 `dist/`。
 
 完整的[部署说明](docs/deployment.md)包含数据库、Worker 密钥、来源配置和验证清单。不要将 service-role key 或 IP 哈希盐暴露给浏览器。
 

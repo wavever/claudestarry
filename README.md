@@ -46,7 +46,7 @@ npm run build
 1. Create a Supabase project and apply every SQL migration in `supabase/migrations/` in filename order.
 2. Copy `.env.example` to `.env.production.local` and set your public Supabase URL, anonymous key, and site URL.
 3. Configure the Cloudflare Pages Worker’s server-only secrets and its exact `ALLOWED_ORIGINS` list.
-4. Configure the workflow secrets in GitHub’s `production` environment; pushes to `main` will run the tests and publish `dist/` to Cloudflare Pages automatically.
+4. Keep the Cloudflare Pages project connected to this GitHub repository; pushes to `main` will run the configured Pages build and publish `dist/` automatically.
 
 The [deployment guide](docs/deployment.md) covers the database, Worker secrets, origin configuration, and verification checklist. Never expose a service-role key or IP hash salt to the browser.
 

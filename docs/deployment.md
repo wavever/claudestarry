@@ -1,100 +1,80 @@
-# Shared-star deployment
+# Deploy a shared Claude Starry galaxy
 
-The production site is **claudestarry** at <https://claudestarry.pages.dev>. It
-uses Supabase project `jykeprbzpbgghxkndqld` (Singapore free tier) and a
-Cloudflare Pages direct upload. There is no Git-based deployment required.
+This guide deploys an independent Claude Starry instance with Supabase and Cloudflare Pages. Replace every placeholder with values from your own projects and domains.
 
-## Browser configuration
+## Architecture
 
-Copy `.env.example` to `.env.production.local` on the machine that runs the
-production build, and set only these public values:
+- The browser reads shared stars with a public Supabase anonymous key.
+- The Cloudflare Pages Worker is the only writer. It validates submissions, rate-limits them, hashes the source address with a server-side salt, and calls the service-only database RPC.
+- `public/_worker.js` and `public/_routes.json` are copied into `dist/` during the Vite build. The Worker handles `/api/*`; static assets bypass it.
+
+## 1. Create the Supabase project
+
+Create a Supabase project, then run every SQL file in `supabase/migrations/` in filename order with the SQL Editor or your normal migration workflow.
+
+The migrations create the public `stars` table, its read-only browser policies, the private submission-fingerprint store, Realtime publication, and the `create_star_submission` RPC. Do not grant browser roles direct insert, update, or delete access: the Worker should remain the only writer.
+
+## 2. Configure the browser build
+
+Copy `.env.example` to `.env.production.local` and provide only browser-safe values:
 
 ```dotenv
-VITE_SUPABASE_URL=https://jykeprbzpbgghxkndqld.supabase.co
-VITE_SUPABASE_ANON_KEY=<Supabase anon key>
-VITE_PUBLIC_SITE_URL=https://claudestarry.pages.dev
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+VITE_PUBLIC_SITE_URL=https://your-site.example
 ```
 
-Run `npm run build` after setting these values. Vite embeds `VITE_*` values in
-the browser bundle. If either Supabase browser value is absent, the app stays
-in its existing local-only mode and does not upload local stars later.
+Vite embeds `VITE_*` values into the browser bundle. If either Supabase browser value is absent, the application stays browser-local and does not upload prior local records when shared storage is later enabled.
 
-Never put `SUPABASE_SERVICE_ROLE_KEY` or `IP_HASH_SALT` in an `.env*` file used
-by Vite, a `VITE_*` value, source code, or the direct-upload artifact.
+For Git-integrated Pages builds, set the same public `VITE_*` values in the Pages build environment; `.env.production.local` stays local and is not uploaded to Pages.
 
-## Database
+Never put `SUPABASE_SERVICE_ROLE_KEY` or `IP_HASH_SALT` in a `VITE_*` variable, source file, browser-readable environment file, or build artifact.
 
-Apply every SQL file in `supabase/migrations/` in filename order in the
-Supabase SQL Editor before deployment. The first creates the schema; the
-submission-validation migration allows an empty story and enforces the supported
-date range (2021-01-26 onward) in both the table and write RPC.
-The schema includes:
+## 3. Configure Cloudflare Pages
 
-- `public.stars`: `id`, `catalog_number`, `alias`, `started`, `date`,
-  `message`, and `created_at`.
-- Public anonymous/authenticated **SELECT only** RLS. There are no public
-  INSERT, UPDATE, or DELETE grants/policies.
-- `private.star_submission_fingerprints`, which has RLS and no public access.
-  It stores only an HMAC-like hashed address fingerprint, never a raw address.
-- Realtime publication for `public.stars`.
-
-The Worker is the only writer. It calls the service-only RPC exactly as:
+Create a Cloudflare Pages project for this repository with:
 
 ```text
-create_star_submission(
-  p_id text,
-  p_alias text,
-  p_started date,
-  p_date date,
-  p_message text,
-  p_ip_hash text
-)
+Build command: npm run build
+Build output directory: dist
 ```
 
-The RPC uses `catalog_number`'s identity sequence, so a returned catalog number
-is authoritative and unique. It makes a repeated `p_id` idempotent, serializes
-same-fingerprint attempts, and enforces approximately one submission per ten
-seconds and twenty per UTC day. Empty aliases become the final `AL 000001`
-style designation in the original INSERT, so Realtime never exposes a
-placeholder alias.
-
-## Cloudflare Pages
-
-`public/_worker.js` is copied to `dist/_worker.js` by Vite and runs Pages in
-advanced mode. `public/_routes.json` limits Worker invocations to `/api/*`, so
-static assets bypass the Function quota.
-
-In the Pages production environment, configure these encrypted secrets:
+Set these encrypted Pages environment variables for the production environment:
 
 ```text
-SUPABASE_URL=https://jykeprbzpbgghxkndqld.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<Supabase service-role key>
-IP_HASH_SALT=<long, stable random secret; at least 16 characters>
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<your-supabase-service-role-key>
+IP_HASH_SALT=<a stable random secret of at least 16 characters>
+ALLOWED_ORIGINS=https://your-site.example
 ```
 
-`ALLOWED_ORIGINS` is optional and is only for a future trusted custom domain,
-as a comma-separated server-side list. The Worker already accepts
-`https://claudestarry.pages.dev` plus the two documented local dev origins.
-It validates Origin, JSON type and streamed body size, canonical dates and
-text bounds, and applies a 15-second timeout to its server-to-Supabase call.
-Errors sent to browsers are deliberately sanitized.
+`ALLOWED_ORIGINS` is a comma-separated list of exact browser origins allowed to submit stars. Use scheme and host only—no path and no trailing slash. Include each production or custom-domain origin that should be able to post, for example:
 
-For a direct upload:
+```text
+ALLOWED_ORIGINS=https://your-site.example,https://www.your-site.example
+```
 
-1. Run `npm ci`, `npm test`, and `npm run build` with `.env.production.local`.
-2. Upload the contents of `dist/` in the Pages dashboard to the existing
-   `claudestarry` project.
-3. Confirm `dist/_worker.js` and `dist/_routes.json` are present, then verify
-   `POST https://claudestarry.pages.dev/api/stars` from the deployed page.
+The Worker already permits `http://127.0.0.1:4317` and `http://localhost:4317` for local development. Do not use wildcard origins. Keep the service-role key and hash salt only in Pages’ server-side environment.
+
+## 4. Build and publish
+
+Run the checks and create the deployable output:
+
+```sh
+npm ci
+npm test
+npm run build
+```
+
+Publish the generated `dist/` directory through your Cloudflare Pages workflow. Confirm that `dist/_worker.js` and `dist/_routes.json` are included alongside the static assets.
+
+## 5. Verify the deployment
+
+1. Open the deployed site from an origin listed in `ALLOWED_ORIGINS`.
+2. Add a test star and confirm it appears after a refresh or in a second browser session.
+3. Confirm the browser receives only the public URL and anonymous key; inspect the deployed settings to ensure the service-role key and hash salt are not exposed.
+4. If submissions return an origin error, compare the browser’s full origin with `ALLOWED_ORIGINS`, including protocol and any `www` subdomain.
 
 ## Runtime behavior
 
-The browser creates one Supabase client/channel, subscribes before its initial
-fully paginated read (1,000 rows per page), and reconciles with a deduplicated
-60-second timestamp overlap on reconnect/visibility changes. An initial read
-never replays meteors. A live remote insert can animate only the newest recent
-star and does not move someone else's camera, reading card, or intro. The
-author's POST retries once with the same `MY-<uuid>` ID and their Realtime echo
-is suppressed, so it animates once and retains its own card/focus. Hidden tabs
-unsubscribe and stop fallback work; an unavailable socket uses low-frequency
-reconciliation while visible.
+The client subscribes before its first paginated read, reconciles recent records after reconnects, and avoids replaying meteors for the initial history. A visitor’s own submission reuses its generated ID on a retry and animates once when it returns. Hidden tabs stop their realtime work until they are visible again.

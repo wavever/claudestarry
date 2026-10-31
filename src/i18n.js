@@ -16,6 +16,7 @@ export const TRANSLATIONS = Object.freeze({
     },
     brand: {
       title: 'Claude 余光',
+      slogan: '你的 Claude 账号没有消失，只是从此不再回应，但仍留有余光',
       aria: 'Claude 余光（Claude Starry）',
     },
     scene: {
@@ -137,6 +138,7 @@ export const TRANSLATIONS = Object.freeze({
     },
     brand: {
       title: 'Claude Afterlight',
+      slogan: 'Your Claude account has not disappeared. It no longer responds, but it still leaves an afterlight.',
       aria: 'Claude Afterlight (Claude Starry)',
     },
     scene: {

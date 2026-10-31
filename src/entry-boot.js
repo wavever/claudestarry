@@ -8,7 +8,7 @@ const browserStorage=safeStorage(()=>localStorage);
 let locale=resolveLocale({search:location.search,storage:browserStorage,languages:navigator.languages});
 applyDocumentLocale(locale);
 let config=defaultConfigForLocale(locale);
-try{config=loadConfig(browserStorage,defaultConfigForLocale(locale));config.slogan=localizeDefaultSlogan(config.slogan,locale);}catch{}
+try{config=loadConfig(browserStorage,defaultConfigForLocale(locale));config.slogan=localizeDefaultSlogan(config.slogan,locale,import.meta.env.DEV);}catch{}
 const canvas=document.createElement('canvas');canvas.id='entry-particles';
 canvas.setAttribute('aria-label',config.slogan);canvas.style.cssText='position:fixed;inset:0;width:100%;height:100%;z-index:2;background:#020202;pointer-events:none';
 document.querySelector('#universe').append(canvas);
@@ -125,7 +125,7 @@ function setLocale(nextLocale){
   const normalized=normalizeLocale(nextLocale);
   if(!normalized)return locale;
   locale=normalized;
-  config.slogan=localizeDefaultSlogan(config.slogan,locale);
+  config.slogan=localizeDefaultSlogan(config.slogan,locale,import.meta.env.DEV);
   applyDocumentLocale(locale);
   canvas.setAttribute('aria-label',config.slogan);
   if(!finished)size();

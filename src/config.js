@@ -20,8 +20,8 @@ export function defaultConfigForLocale(locale){
 export function isDefaultSlogan(slogan){
   return slogan===DEFAULT_CONFIG.slogan||slogan===sloganForLocale('en');
 }
-export function localizeDefaultSlogan(slogan,locale){
-  return isDefaultSlogan(slogan)?sloganForLocale(locale):slogan;
+export function localizeDefaultSlogan(slogan,locale,preserveCustom=true){
+  return !preserveCustom||isDefaultSlogan(slogan)?sloganForLocale(locale):slogan;
 }
 const RANGES={fontSize:[16,96],mobileFontSize:[14,64],fontWeight:[300,700],textParticleSize:[.6,4],textSampleStep:[1,4],lineHeight:[30,140],mobileLineHeight:[24,100],lightDuration:[.1,10],textHold:[0,10],textMorphDuration:[.2,8],logoHold:[0,10],nebulaDuration:[.2,20],meteorDuration:[.2,8],meteorTail:[.03,.35],focusDuration:[.2,8],focusDelay:[0,2],twinkleDecay:[1,60],homeDistance:[25,100],mobileHomeDistance:[40,160]};
 export function normalizeConfig(input={},defaults=DEFAULT_CONFIG){

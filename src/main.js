@@ -24,7 +24,7 @@ const browserStorage=safeStorage(()=>localStorage);
 let locale=resolveLocale({search:location.search,storage:browserStorage,languages:navigator.languages});
 applyDocumentLocale(locale);
 let config=defaultConfigForLocale(locale);
-try{config=loadConfig(browserStorage,defaultConfigForLocale(locale));config.slogan=localizeDefaultSlogan(config.slogan,locale);}catch{}
+try{config=loadConfig(browserStorage,defaultConfigForLocale(locale));config.slogan=localizeDefaultSlogan(config.slogan,locale,import.meta.env.DEV);}catch{}
 const SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || location.origin + location.pathname;
 const sharedConfig=getSharedStarsConfig(import.meta.env);
 const t=(key,values)=>translate(locale,key,values);
@@ -907,7 +907,7 @@ function setLocale(nextLocale){
   if(!normalized||normalized===locale)return;
   locale=normalized;
   persistLocale(browserStorage,locale);
-  config.slogan=localizeDefaultSlogan(config.slogan,locale);
+  config.slogan=localizeDefaultSlogan(config.slogan,locale,import.meta.env.DEV);
   applyDocumentLocale(locale);
   window.__afterlightEntryBoot?.setLocale(locale);
   syncLocaleControls();

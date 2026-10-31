@@ -52,6 +52,15 @@ test('an explicit locale choice persists safely and affects the default intro sl
   assert.equal(localeSearchWithSelection('?view=galaxy', 'zh-CN'), '?view=galaxy');
 });
 
+test('production slogans follow the selected locale even with a remembered custom debug slogan', () => {
+  const staleSlogan = '你的 Claude 账号没有消失，只是从此不再回应，但仍留有余光';
+  const english = localizeDefaultSlogan(staleSlogan, 'en', false);
+  assert.equal(english, sloganForLocale('en'));
+  assert.doesNotMatch(english, /[\u3400-\u9fff]/u);
+  assert.equal(localizeDefaultSlogan(english, 'zh-CN', false), sloganForLocale('zh-CN'));
+  assert.equal(localizeDefaultSlogan(staleSlogan, 'en', true), staleSlogan);
+});
+
 test('translations interpolate values, fall back predictably, and stay key-complete', () => {
   assert.equal(translate('en', 'counter.aria', { count: 12 }), '12 disabled accounts recorded');
   assert.equal(translate('en', 'counter.ariaOne', { count: 1 }), '1 disabled account recorded');

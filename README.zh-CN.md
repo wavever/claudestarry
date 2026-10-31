@@ -10,9 +10,15 @@ Claude Starry 是一个由社区创建的非官方纪念项目。它使用 Three
 
 ## 演示
 
-[![网页录屏：添加第一个账号并展示星星名片](docs/demo.gif)](docs/demo.mp4)
+第一段
 
-[观看录屏演示](docs/demo.mp4)
+https://github.com/user-attachments/assets/df5bb735-d866-48a1-9db1-1aa855a590be
+
+第二段
+
+https://github.com/user-attachments/assets/9117a77a-3023-4567-bc9c-1202bb0583cd
+
+[下载完整原版录屏](docs/demo.mp4)
 
 添加第一个账号，观看它以流星划入星河，并打开星星名片。
 

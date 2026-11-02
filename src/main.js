@@ -10,6 +10,8 @@ import { drawRandomStar } from './random-star.js';
 import { displayedAccountCount, renderAccountCount } from './account-count.js';
 import { OWN_IDS_STORAGE_KEY, isOwnStar, loadOwnIds, nextOwnStarIndex, ownStarIndices, rememberOwnId } from './own-stars.js';
 import { FallbackUniverse, supportsWebGL2 } from './fallback-universe.js';
+import { placeEntryCard } from './entry-card-layout.js';
+import { selectEntryCardCandidates } from './entry-card-selection.js';
 
 const $ = selector => document.querySelector(selector);
 let accounts = [];
@@ -28,6 +30,179 @@ const meteorQueue=[];
 const queuedMeteorIds=new Set();
 const browserStorage=safeStorage(()=>localStorage);
 const CARD_SWITCH_FADE_MS = 180;
+const ENTRY_CARD_LIFETIME_MS = 800 + 2000 + 800; // fade in, hold, fade out
+const entryCardIds = new Set();
+const entryCards = new Map();
+let entryCardSelection = null;
+const entryCardPlannedPlacements = new Map();
+let entryCardsStopped = false;
+let entryCardsIntakeClosed = false;
+let entryCardsLayer;
+
+function makeEntryCardNode(account, measure = false) {
+  const node = document.createElement('div');
+  node.className = measure ? 'entry-card-measure' : 'entry-mini-card is-waiting';
+  node.hidden = !measure;
+  node.setAttribute('aria-hidden', 'true');
+  node.style.setProperty('--entry-card-lifetime', `${ENTRY_CARD_LIFETIME_MS}ms`);
+  if (!measure) node.dataset.accountId = account.id;
+  for (const [className, text] of [
+    ['entry-mini-card__catalog', catalogDesignation(account)],
+    ['entry-mini-card__name', account.alias],
+    ['entry-mini-card__date', account.started ? `${account.started} — ${account.date}` : account.date],
+  ]) {
+    const line = document.createElement('div');
+    line.className = className;
+    line.textContent = text;
+    node.append(line);
+  }
+  return node;
+}
+
+function entryCardBounds() {
+  return { left: 12, top: innerWidth < 600 ? 100 : 78, right: innerWidth - 12, bottom: innerHeight - 90 };
+}
+
+function entryCardSelectionOptions() {
+  const cardWidth = innerWidth < 600 ? Math.min(196, (innerWidth - 32) / 2) : 196;
+  return {
+    spacingX: Math.max(cardWidth + 40, innerWidth * .24),
+    spacingY: Math.max(136, innerHeight * .24),
+    center: { x: innerWidth / 2, y: innerHeight / 2 },
+  };
+}
+
+function entryCardPreferredPosition(point, width, height) {
+  const { spacingX, spacingY, center } = entryCardSelectionOptions();
+  const dx = (point.x - center.x) / spacingX;
+  const dy = (point.y - center.y) / spacingY;
+  // Keep cards near their stars, including the middle of the galaxy. Only
+  // collision avoidance may move them; there are no forced peripheral bands.
+  if (dx * dx + dy * dy < .25) {
+    return { x: point.x - width / 2, y: point.y + 18 };
+  }
+  if (Math.abs(dy) > Math.abs(dx)) {
+    return { x: point.x - width / 2, y: dy >= 0 ? point.y + 18 : point.y - height - 18 };
+  }
+  return {
+    x: dx >= 0 ? point.x + 18 : point.x - width - 18,
+    y: point.y - height / 2,
+  };
+}
+
+function stopEntryCards() {
+  entryCardsStopped = true;
+  for (const { node, timer } of entryCards.values()) {
+    clearTimeout(timer);
+    node.remove();
+  }
+  entryCards.clear();
+}
+
+function syncEntryCards() {
+  if (!universe || entryCardsStopped) return;
+  if (!entryCards.size && entryCardsIntakeClosed) return;
+  if (cardId || document.querySelector('dialog[open]')) { stopEntryCards(); return; }
+  if (!entryCardSelection) {
+    if (!entryControlsReady || (sharedConfig && !sharedStars?.hydrated)) return;
+    // Consider the whole initial sky, including stars still fading in, so the
+    // first few arrivals in a dense cluster cannot crowd out other regions.
+    const candidates = [];
+    for (let index = 0; index < accounts.length; index++) {
+      if (accounts[index].sample) continue;
+      const point = universe.project(index);
+      if (point.visible && point.x >= 0 && point.x <= innerWidth && point.y >= 0 && point.y <= innerHeight) {
+        candidates.push({ id: accounts[index].id, x: point.x, y: point.y });
+      }
+    }
+    if (!candidates.length) return;
+    // Measure the actual card footprint. Star-to-star distance determines
+    // priority, while available rectangle space determines what can be shown.
+    const probe = makeEntryCardNode(accounts.find(account => account.id === candidates[0].id), true);
+    $('#universe').append(probe);
+    const width = probe.offsetWidth, height = probe.offsetHeight;
+    probe.remove();
+    const occupied = [];
+    const bounds = entryCardBounds();
+    entryCardSelection = new Set(selectEntryCardCandidates(candidates, {
+      ...entryCardSelectionOptions(),
+      canSelect: candidate => {
+        const preferred = entryCardPreferredPosition(candidate, width, height);
+        const placement = placeEntryCard({ point: preferred, width, height, bounds, occupied, gap: 14 });
+        if (!placement) return false;
+        // Keep the name card recognisably near its star rather than filling
+        // unrelated empty corners of the screen.
+        if (Math.hypot((placement.x - preferred.x) / width, (placement.y - preferred.y) / height) > 1.5) return false;
+        occupied.push(placement);
+        entryCardPlannedPlacements.set(candidate.id, { placement, point: candidate });
+        return true;
+      },
+    }).map(candidate => candidate.id));
+  }
+  const occupied = [];
+  const showing = [], waiting = [];
+  for (let index = 0; index < accounts.length; index++) {
+    (entryCards.get(accounts[index].id)?.timer ? showing : waiting).push(index);
+  }
+  // Reserve space for cards already fading/holding before admitting new ones.
+  for (const index of [...showing, ...waiting]) {
+    const account = accounts[index];
+    if (account.sample || !entryCardSelection.has(account.id)) continue;
+    let card = entryCards.get(account.id);
+    if (!card && (entryCardsIntakeClosed || entryCardIds.has(account.id))) continue;
+    const point = universe.project(index);
+    const visible = universe.isAccountStarVisible(index) && point.visible
+      && point.x >= 0 && point.x <= innerWidth && point.y >= 0 && point.y <= innerHeight;
+    if (!card && !visible) continue;
+    if (!card) {
+      if (!entryCardsLayer) {
+        entryCardsLayer = document.createElement('div');
+        entryCardsLayer.id = 'entry-cards-layer';
+        entryCardsLayer.setAttribute('aria-hidden', 'true');
+        $('#universe').append(entryCardsLayer);
+      }
+      const node = makeEntryCardNode(account);
+      entryCardsLayer.append(node);
+      entryCardIds.add(account.id);
+      const planned = entryCardPlannedPlacements.get(account.id);
+      card = { node, timer: null, placement: planned?.placement || null, point: planned?.point || null };
+      entryCards.set(account.id, card);
+    }
+    card.node.hidden = !visible;
+    if (!visible) continue;
+    const width = card.node.offsetWidth, height = card.node.offsetHeight;
+    const previous = card.placement && card.point ? {
+      x: card.placement.x + point.x - card.point.x,
+      y: card.placement.y + point.y - card.point.y,
+    } : null;
+    const placement = placeEntryCard({
+      point: entryCardPreferredPosition(point, width, height), width, height, occupied, previous,
+      bounds: entryCardBounds(), gap: 14,
+    });
+    // When space is exhausted, wait for a slot instead of stacking cards.
+    // The display timer and fade only begin once a card has a valid position.
+    card.node.hidden = !placement;
+    if (!placement) continue;
+    occupied.push(placement);
+    card.placement = placement;
+    card.point = point;
+    card.node.style.transform = `translate3d(${placement.x}px,${placement.y}px,0)`;
+    if (!card.timer) {
+      card.node.classList.remove('is-waiting');
+      card.timer = setTimeout(() => {
+        card.node.remove();
+        entryCards.delete(account.id);
+        syncEntryCards();
+      }, ENTRY_CARD_LIFETIME_MS);
+    }
+  }
+  // Late realtime arrivals have their own meteor/card flow. This is an entry-only preview.
+  if ((universe.accountReveal >= 1 || universe instanceof FallbackUniverse)
+    && (accounts.length || !sharedConfig || sharedStars?.hydrated)) entryCardsIntakeClosed = true;
+}
+addEventListener('pointerdown', stopEntryCards, { once: true, passive: true });
+addEventListener('wheel', stopEntryCards, { once: true, passive: true });
+addEventListener('pagehide', stopEntryCards);
 clearLegacyConfig(browserStorage);
 let locale=resolveLocale({search:location.search,storage:browserStorage,languages:navigator.languages});
 applyDocumentLocale(locale);
@@ -78,7 +253,7 @@ function updateAccountCount(){
     synced:!sharedConfig||Boolean(sharedStars?.hydrated),
   });
   if(count===null)return;
-  counter?.setCount(count);
+  counter?.setCount(count,locale);
   renderAccountCount(count,locale);
 }
 function setVisibleAccounts(next){
@@ -449,7 +624,7 @@ if(!sharedConfig){
 
 const counterCanvas = $('#counter-canvas');
 if (counterCanvas) {
-  counter = new ParticleCounter(counterCanvas);
+  counter = window.__afterlightEntryBoot?.particleCounter || new ParticleCounter(counterCanvas);
   updateAccountCount();
 }
 
@@ -627,7 +802,7 @@ if(sharedConfig){
   if(formNote)formNote.textContent=t('form.sharedNote');
   sharedStars=new SharedStarsClient(sharedConfig,{
     onRecords:records=>applySharedRecords(records),
-    onSynced:()=>updateAccountCount(),
+    onSynced:()=>{updateAccountCount();syncEntryCards();},
     onRemoteStar:record=>enqueueMeteor(record.id),
     onError:error=>toast(error.message),
     message:key=>t(`errors.${key}`),
@@ -651,6 +826,7 @@ try {
     onFrame: () => {
       universe?.setDay(Date.now() / DAY_MS);
       if(universe){
+        syncEntryCards();
         updateCardPosition();
         settleCardTransition();
         updateViewControls();
@@ -695,7 +871,7 @@ try {
       $('#scene').querySelector('canvas')?.remove();
       universe = new FallbackUniverse($('#scene'), accounts, {
         config, ariaLabel: t('scene.aria'), onSelect: select,
-        onFrame: () => { updateCardPosition(); updateViewControls(); },
+        onFrame: () => { syncEntryCards(); updateCardPosition(); updateViewControls(); },
         onNebulaReady: () => { document.body.classList.add('nebula-ready'); entryControlsReady = true; updateViewControls(); },
         onReady: () => { ready = true; document.body.classList.add('loaded'); updateViewControls(); },
       });
@@ -707,6 +883,7 @@ try {
 }
 
 // Stars that arrived in realtime while the intro was still playing.
+syncEntryCards();
 drainMeteorQueue();
 
 $('#create').addEventListener('click', () => {

@@ -240,23 +240,13 @@ a:focus-visible {
 }
 
 .counter-number {
-  display: inline-grid;
-  place-items: center;
+  display: inline-block;
   margin: 0 0.12em;
   vertical-align: middle;
 }
 
-.counter-number > * { grid-area: 1 / 1; }
-
-#counter-value {
-  color: #eadfcd;
-  font: 500 18px/1 "Songti SC", "PingFang SC", "Noto Serif SC", serif;
-  letter-spacing: 0.04em;
-  font-variant-numeric: tabular-nums;
-}
-
 .counter-canvas {
-  opacity: .20;
+  opacity: 1;
   display: block;
   width: 26px;
   height: 24px;
@@ -1167,10 +1157,6 @@ dialog textarea::placeholder {
     letter-spacing: 0.03em;
   }
 
-  #counter-value {
-    font-size: 16px;
-  }
-
   .counter-canvas {
     width: 24px;
     height: 21px;
@@ -1478,4 +1464,73 @@ dialog textarea::placeholder {
     width: calc(100vw - 24px);
     padding-inline: 2px;
   }
+}
+#entry-cards-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.entry-mini-card,
+.entry-card-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(196px, calc(100vw - 24px));
+  padding: 11px 14px;
+  box-sizing: border-box;
+  border: 1px solid rgba(238, 172, 144, .24);
+  border-radius: 9px;
+  background: rgba(13, 12, 15, .88);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .18);
+  color: #f6eee8;
+  animation: entry-card-fade var(--entry-card-lifetime, 3600ms) ease-in-out both;
+}
+
+.entry-mini-card__catalog {
+  font-size: 9px;
+  letter-spacing: .12em;
+  color: #bd9a88;
+}
+
+.entry-mini-card__name {
+  margin: 4px 0;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.entry-mini-card__date {
+  font-size: 10px;
+  line-height: 1.5;
+  color: #b7aaa3;
+  white-space: nowrap;
+}
+
+.entry-mini-card.is-waiting { animation: none; }
+.entry-card-measure { visibility: hidden; animation: none; }
+
+@media (max-width: 599px) {
+  .entry-mini-card,
+  .entry-card-measure {
+    width: min(196px, calc((100vw - 32px) / 2));
+    padding: 9px 10px;
+  }
+  .entry-mini-card__date {
+    font-size: 9px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@keyframes entry-card-fade {
+  0%, 100% { opacity: 0; }
+  22.222%, 77.778% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry-mini-card { animation: none; }
 }

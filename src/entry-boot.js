@@ -4,6 +4,7 @@ import {sampleSlogan} from './text-layout.js';
 import {loadAccounts,seededRandom} from './model.js';
 import {fetchSharedStarCount,getSharedStarsConfig} from './shared-config.js';
 import {renderAccountCount} from './account-count.js';
+import {ParticleCounter} from './particle-counter.js';
 import {applyDocumentLocale,localeSearchWithSelection,normalizeLocale,persistLocale,resolveLocale,safeStorage} from './i18n.js';
 
 const browserStorage=safeStorage(()=>localStorage);
@@ -17,12 +18,14 @@ let config=defaultConfigForLocale(locale);
 // galaxies ask for just the total; a local galaxy is counted from storage.
 // The app takes over the counter (handOffCounter) once it has loaded.
 let earlyAccountCount=null,counterHandedOff=false;
+const counterCanvas=document.querySelector('#counter-canvas');
+const particleCounter=counterCanvas?new ParticleCounter(counterCanvas):null;
 const sharedStarsConfig=getSharedStarsConfig(import.meta.env);
 const localAccountCount=()=>{try{return loadAccounts(browserStorage).filter(account=>!account.sample).length;}catch{return null;}};
 const accountCount=(sharedStarsConfig?fetchSharedStarCount(sharedStarsConfig):Promise.resolve(localAccountCount())).then(count=>{
   if(!Number.isFinite(count))return null;
   earlyAccountCount=count;
-  if(!counterHandedOff)renderAccountCount(count,locale);
+  if(!counterHandedOff){particleCounter?.setCount(count,locale);renderAccountCount(count,locale);}
   return count;
 });
 function handOffCounter(){counterHandedOff=true;return accountCount;}
@@ -147,7 +150,7 @@ function setLocale(nextLocale){
   applyDocumentLocale(locale);
   canvas.setAttribute('aria-label',config.slogan);
   // applyDocumentLocale resets the counter line to its count-less template.
-  if(!counterHandedOff&&earlyAccountCount!==null)renderAccountCount(earlyAccountCount,locale);
+  if(!counterHandedOff&&earlyAccountCount!==null){particleCounter?.setCount(earlyAccountCount,locale);renderAccountCount(earlyAccountCount,locale);}
   if(!finished)size();
   return locale;
 }
@@ -172,7 +175,7 @@ document.querySelectorAll('[data-locale]').forEach(button=>{
   });
 });
 syncLocaleControls();
-const boot={ready,finish,config,elapsed:0,get locale(){return locale;},setLocale,handOffCounter};window.__afterlightEntryBoot=boot;
+const boot={ready,finish,config,particleCounter,elapsed:0,get locale(){return locale;},setLocale,handOffCounter};window.__afterlightEntryBoot=boot;
 addEventListener('resize',size);document.addEventListener('visibilitychange',pause);size();
 
 function draw(now){

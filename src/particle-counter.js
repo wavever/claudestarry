@@ -5,6 +5,7 @@ export class ParticleCounter {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.count = -1;
+    this.locale = 'zh-CN';
     this.particles = [];
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.width = 140;
@@ -59,16 +60,17 @@ export class ParticleCounter {
     }
   }
 
-  setCount(nextCount) {
+  setCount(nextCount, locale = this.locale) {
     const val = Math.max(0, Number(nextCount) || 0);
-    if (val === this.count && this.particles.length > 0) return;
+    if (val === this.count && locale === this.locale && this.particles.length > 0) return;
     const instant = this.count === -1;
     this.count = val;
+    this.locale = locale;
     this.sampleNumber(val, instant);
   }
 
   sampleNumber(num, instant = false) {
-    const text = num.toLocaleString();
+    const text = num.toLocaleString(this.locale === 'zh-CN' ? 'zh-CN' : 'en-US');
     const scale = 2;
     const fontSize = window.innerWidth < 600 ? 20 : 26;
 
@@ -108,8 +110,8 @@ export class ParticleCounter {
       for (let x = 0; x < offscreen.width; x += step) {
         const idx = (Math.floor(y) * offscreen.width + Math.floor(x)) * 4;
         if (pixels[idx + 3] >= 85) {
-          const jx = (rand() - 0.5) * (step / scale * 0.45);
-          const jy = (rand() - 0.5) * (step / scale * 0.45);
+          const jx = (rand() - 0.5) * (step / scale * 0.2);
+          const jy = (rand() - 0.5) * (step / scale * 0.2);
           targetPoints.push({
             x: x / scale + jx,
             y: y / scale + jy,
@@ -148,8 +150,8 @@ export class ParticleCounter {
         newParticles.push(existing);
       } else if (target) {
         // Spawn new particle
-        // 纯净星白，不添加主题色
-        const color = rand() < 0.35 ? '255, 252, 246' : '250, 248, 242';
+        // Bright white and ice-white particles carry the numeral themselves.
+        const color = rand() < 0.35 ? '255, 255, 255' : '235, 247, 255';
 
         const startX = instant ? target.x : target.x + (rand() - 0.5) * 16;
         const startY = instant ? target.y : target.y + (rand() - 0.5) * 16;
@@ -164,7 +166,7 @@ export class ParticleCounter {
           color,
           speed: 1.0 + rand() * 2.2,
           phase: rand() * Math.PI * 2,
-          radius: 1.05 + rand() * 0.20,
+          radius: 0.75 + rand() * 0.15,
         });
       } else if (existing) {
         // Disperse extra particle

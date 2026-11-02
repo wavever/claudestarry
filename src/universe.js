@@ -10,9 +10,11 @@ const ACCOUNT_REVEAL_DURATION = 2.0;
 const ACCOUNT_REVEAL_MAX_DELAY = 0.8;
 const ACCOUNT_REVEAL_FADE = 0.2;
 const STAR_PICK_MIN_LIGHT = .08;
-export const ACCOUNT_STAR_MIN_CSS_DIAMETER = 2.2;
-export const ACCOUNT_STAR_MAX_CSS_DIAMETER = 5.5;
+export const ACCOUNT_STAR_MIN_CSS_DIAMETER = 1.8;
+export const ACCOUNT_STAR_MAX_CSS_DIAMETER = 4.2;
 export const ACCOUNT_STAR_GLOW_SCALE = 2.6;
+// Breathing stars get a wider halo sprite so their glow has room to swell.
+const ACCOUNT_STAR_BREATH_MIN_SPRITE = 13;
 const ACCOUNT_STAR_MIN_DEPTH_FACTOR = .88;
 const ACCOUNT_STAR_MAX_DEPTH_FACTOR = 1.12;
 const ACCOUNT_STAR_SIZE_BREATH = .035;
@@ -108,13 +110,13 @@ void main() {
   gl_Position = projectionMatrix * mv;
 
   // Preserve a little relative-depth parallax without letting zoom or DPR
-  // break the 2.2px–5.5px bright-core diameter. The sprite includes the halo.
+  // break the ${ACCOUNT_STAR_MIN_CSS_DIAMETER}px–${ACCOUNT_STAR_MAX_CSS_DIAMETER}px bright-core diameter. The sprite includes the halo.
   float depthFactor = clamp(uReferenceDepth / depth, ${glslFloatLiteral(ACCOUNT_STAR_MIN_DEPTH_FACTOR)}, ${glslFloatLiteral(ACCOUNT_STAR_MAX_DEPTH_FACTOR)});
   float sizePulse = 1.0 + clamp(tw, -1.0, 1.0) * ${glslFloatLiteral(ACCOUNT_STAR_SIZE_BREATH)} * aBreathEnabled * uMotion;
   sizePulse *= 1.0 + clamp(breath, -1.0, 1.0) * 0.06 * aBreathEnabled * uMotion;
   float cssDiameter = clamp((${glslFloatLiteral(ACCOUNT_STAR_MIN_CSS_DIAMETER)} + clamp(aScale, 0.0, 1.0) * ${glslFloatLiteral(ACCOUNT_STAR_MAX_CSS_DIAMETER - ACCOUNT_STAR_MIN_CSS_DIAMETER)}) * depthFactor * sizePulse, ${glslFloatLiteral(ACCOUNT_STAR_MIN_CSS_DIAMETER)}, ${glslFloatLiteral(ACCOUNT_STAR_MAX_CSS_DIAMETER)});
   float spriteCss = cssDiameter * ${glslFloatLiteral(ACCOUNT_STAR_GLOW_SCALE)};
-  spriteCss = mix(spriteCss, max(spriteCss * 1.2, 17.0), aBreathEnabled);
+  spriteCss = mix(spriteCss, max(spriteCss * 1.2, ${glslFloatLiteral(ACCOUNT_STAR_BREATH_MIN_SPRITE)}), aBreathEnabled);
   spriteCss *= 1.0 + clamp(breath, -1.0, 1.0) * 0.06 * aBreathEnabled * uMotion;
   vCoreFraction = cssDiameter / spriteCss;
   gl_PointSize = spriteCss * uDpr;

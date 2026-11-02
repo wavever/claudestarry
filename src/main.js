@@ -4,7 +4,7 @@ import { today, dateToDay, DAY_MS, loadAccounts, validAccount, mergeAccounts, ST
 import { ParticleCounter } from './particle-counter.js';
 import { getSharedStarsConfig, latestCivilDate, SharedStarsClient } from './shared-stars.js';
 import {applyDocumentLocale,normalizeLocale,persistLocale,resolveLocale,safeStorage,translate} from './i18n.js';
-import { createCardsPageShare } from './share.js';
+import { createCardsPageShare, shareCountText } from './share.js';
 import { OWN_IDS_STORAGE_KEY, isOwnStar, loadOwnIds, nextOwnStarIndex, ownStarIndices, rememberOwnId } from './own-stars.js';
 import { FallbackUniverse, supportsWebGL2 } from './fallback-universe.js';
 
@@ -1029,7 +1029,14 @@ async function captureShareScreenshot(token){
         star:universe?.project(item.index)??item.point,
       })),
       viewport:{width:innerWidth,height:innerHeight},
-      countText:t('share.screenshotCount',{count:shareFlow.layout.length}),
+      // Count every star this visitor owns (the image only draws up to three
+      // cards), against the same total the on-screen counter shows.
+      countText:shareCountText({
+        ownCount:currentOwnStarIndices().filter(index=>!accounts[index]?.sample).length,
+        totalCount:accounts.filter(a=>!a.sample).length,
+        locale,
+        format:formatNumber,
+      }),
       siteUrl:SITE_URL,
       slogan:config.slogan,
       locale,

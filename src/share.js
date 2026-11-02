@@ -16,6 +16,22 @@ function signedFixed(value) {
   return `${negative ? '-' : '+'}${Math.abs(value).toFixed(2)}`;
 }
 
+/**
+ * Header caption for the share image. `ownCount` is how many of the visible
+ * accounts belong to this visitor; the rest of `totalCount` are companions,
+ * so the two numbers in the caption always add up to the total.
+ */
+export function shareCountText({ ownCount = 0, totalCount = 0, locale = 'zh-CN', format = String } = {}) {
+  const t = (key, values) => translate(locale, key, values);
+  const total = Math.max(0, Math.floor(Number(totalCount) || 0));
+  const own = Math.min(total, Math.max(0, Math.floor(Number(ownCount) || 0)));
+  const others = total - own;
+  const word = (key, count) => t(`share.${key}${count === 1 ? 'One' : ''}`);
+  if (!own) return t('share.screenshotTotal', { total: format(total), accounts: word('accounts', total) });
+  const values = { own: format(own), others: format(others), accounts: word('accounts', own), companions: word('companions', others) };
+  return t('share.screenshotJoined', values);
+}
+
 export function formatStarCoordinates(position) {
   const values = positionValues(position);
   return values ? `(${signedFixed(values[0])}, ${signedFixed(values[1])}, ${signedFixed(values[2])})` : '';
@@ -285,7 +301,15 @@ function drawHeader(context, { title, countText, scale, width }) {
   if (!countText) return;
   context.fillStyle = 'rgba(226, 219, 207, 0.82)';
   context.font = `400 ${15 * scale}px ${FONT_SERIF}`;
-  context.fillText(ellipsize(context, countText, width - 36 * scale), 18 * scale, 65 * scale);
+  // Narrow (mobile) images cannot fit the full sentence on one line; wrap it
+  // rather than cutting off the numbers, and only ellipsize beyond two lines.
+  const maxWidth = Math.min(width - 36 * scale, 620 * scale);
+  const lines = wrappedLines(context, countText, maxWidth);
+  if (lines.length > 2) {
+    lines.length = 2;
+    lines[1] = ellipsize(context, lines[1], maxWidth, true);
+  }
+  lines.forEach((line, index) => context.fillText(line, 18 * scale, (65 + index * 22) * scale));
 }
 
 function drawSlogan(context, slogan, { scale, width, height }) {

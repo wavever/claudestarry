@@ -96,7 +96,12 @@
       <p id="star-tip-message" class="star-tip-message"></p>
     </div>
     <svg id="card-connector-svg" class="card-connector-svg" style="display:none;" aria-hidden="true">
-      <path id="card-connector-path" class="card-connector-path" d="" />
+      <!-- The dashed thread is revealed through a solid mask stroke, so it can
+           draw itself from the star to the card without losing its dashes. -->
+      <mask id="card-connector-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%">
+        <path id="card-connector-reveal" class="connector-reveal" pathLength="1" d="" />
+      </mask>
+      <path id="card-connector-path" class="card-connector-path connector-thread" mask="url(#card-connector-mask)" d="" />
     </svg>
     <i id="star-anchor" hidden aria-hidden="true"></i>
     <aside id="star-card" hidden aria-label="星星名片" data-i18n-attrs="aria-label:card.aria">

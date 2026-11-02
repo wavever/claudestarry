@@ -5,6 +5,7 @@ import { ParticleCounter } from './particle-counter.js';
 import { getSharedStarsConfig, latestCivilDate, SharedStarsClient } from './shared-stars.js';
 import {applyDocumentLocale,normalizeLocale,persistLocale,resolveLocale,safeStorage,translate} from './i18n.js';
 import { createCardsPageShare, shareCountText } from './share.js';
+import { cardConnector, connectorPathData, shareConnector } from './connector.js';
 import { OWN_IDS_STORAGE_KEY, isOwnStar, loadOwnIds, nextOwnStarIndex, ownStarIndices, rememberOwnId } from './own-stars.js';
 import { FallbackUniverse, supportsWebGL2 } from './fallback-universe.js';
 
@@ -106,7 +107,7 @@ function drainMeteorQueue(){
     queuedMeteorIds.delete(item.id);
     if(item.own){
       const landedIndex=accounts.findIndex(account=>account.id===item.id);
-      if(landedIndex>=0)showCard(landedIndex,{arrival:true});
+      if(landedIndex>=0)showCard(landedIndex);
     }
     updateViewControls();
     drainMeteorQueue();
@@ -188,19 +189,6 @@ function computeCardPlacement(point, cardW, cardH) {
   return { mobile, cardX, cardY, targetX, targetY, connector: right ? 'left' : 'right', sx, sy };
 }
 
-function connectorPath({ mobile, sx, sy, targetX, targetY }) {
-  if (mobile) {
-    const direction = targetY >= sy ? 1 : -1;
-    const bend = clamp(Math.abs(targetY - sy) * 0.48, 28, 92);
-    return `M ${sx} ${sy} C ${sx} ${sy + bend * direction}, ${targetX} ${targetY - bend * direction}, ${targetX} ${targetY}`;
-  }
-  const direction = targetX >= sx ? 1 : -1;
-  const gap = Math.abs(targetX - sx);
-  const departure = clamp(gap * 0.32, 28, 118);
-  const arrival = clamp(gap * 0.20, 32, 84);
-  return `M ${sx} ${sy} C ${sx + departure * direction} ${sy}, ${targetX - arrival * direction} ${targetY}, ${targetX} ${targetY}`;
-}
-
 function updateCardPosition(){
   if(!cardId || $('#star-card').hidden)return;
   const index=accounts.findIndex(a=>a.id===cardId);
@@ -231,11 +219,24 @@ function updateCardPosition(){
   card.style.setProperty('--card-thread-x', `${placement.targetX - placement.cardX}px`);
   card.style.setProperty('--card-thread-y', `${placement.targetY - placement.cardY}px`);
 
+  const d = connectorPathData(cardConnector(placement));
   const path = $('#card-connector-path');
   if(path){
-    path.setAttribute('d', connectorPath(placement));
+    path.setAttribute('d', d);
     path.dataset.layout = placement.mobile ? 'mobile' : 'desktop';
   }
+  $('#card-connector-reveal')?.setAttribute('d', d);
+}
+
+// Ring, thread and card enter as one sequence: the ring closes around the
+// star, the thread draws out to the card, the card surfaces, and the thread's
+// landing point lights up. Restarting the class replays it for every card.
+function playCardEntrance(){
+  const nodes=[$('#star-card'),$('#star-anchor'),$('#card-connector-svg')].filter(Boolean);
+  for(const node of nodes)node.classList.remove('is-entering');
+  if(motionReduced())return;
+  void nodes[0]?.offsetWidth;
+  for(const node of nodes)node.classList.add('is-entering');
 }
 
 function motionReduced(){
@@ -260,7 +261,7 @@ function closeCard(){
   $('#star-anchor').hidden=true;
   const card=$('#star-card');
   card.hidden=true;
-  card.classList.remove('is-arrival');
+  card.classList.remove('is-entering');
   const svg=$('#card-connector-svg');
   if(svg)svg.style.display='none';
   if(universe)universe.setCardView(false);
@@ -291,7 +292,7 @@ function renderCard(account){
     cardMsg.hidden = true;
   }
 }
-function presentCard(index,{arrival=false,preserveCardView=false,fadeIn=false}={}){
+function presentCard(index,{preserveCardView=false,fadeIn=false}={}){
   const account=accounts[index];if(!account)return;
   hideStarTip();cardId=account.id;
   renderCard(account);
@@ -306,11 +307,7 @@ function presentCard(index,{arrival=false,preserveCardView=false,fadeIn=false}={
   const card=$('#star-card');
   card.hidden=false;
   updateCardPosition();
-  card.classList.remove('is-arrival');
-  if(arrival&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
-    void card.offsetWidth;
-    card.classList.add('is-arrival');
-  }
+  playCardEntrance();
   // While cycling, make sure the new content has been laid out while still
   // transparent before beginning its fade-in.
   if(fadeIn)void card.offsetWidth;
@@ -859,30 +856,30 @@ function createShareMiniCard(account,{min,max}){
   return node;
 }
 
+let shareLineId=0;
 function addShareLine(item,svg,delay){
-  if(!item.point?.visible)return;
+  const connector=shareConnector({star:item.point,side:item.side,x:item.x,y:item.y,w:item.w,h:item.h},{width:innerWidth,height:innerHeight});
+  if(!connector)return;
   const ns='http://www.w3.org/2000/svg';
-  const startX=Math.max(8,Math.min(innerWidth-8,item.point.x));
-  const startY=Math.max(8,Math.min(innerHeight-8,item.point.y));
-  const endX=item.side==='left'?item.x+item.w:item.x;
-  const endY=Math.max(item.y+24,Math.min(item.y+item.h-24,item.point.y));
-  const gap=Math.max(48,Math.abs(endX-startX)*0.34);
-  const bend=Math.min(92,Math.max(24,Math.abs(endY-startY)*0.28+gap*0.14));
-  const direction=endX>=startX?1:-1;
-  const path=document.createElementNS(ns,'path');
-  path.setAttribute('d',`M ${startX} ${startY} C ${startX+gap*direction} ${startY+bend}, ${endX-gap*direction} ${endY-bend}, ${endX} ${endY}`);
-  path.setAttribute('pathLength','1');
-  path.setAttribute('class','share-line');
-  path.style.setProperty('--line-delay',`${delay}ms`);
-  svg.append(path);
-
-  const dot=document.createElementNS(ns,'circle');
-  dot.setAttribute('cx',startX);
-  dot.setAttribute('cy',startY);
-  dot.setAttribute('r','2.2');
-  dot.setAttribute('class','share-anchor-dot');
-  dot.style.setProperty('--line-delay',`${delay}ms`);
-  svg.append(dot);
+  const el=(name,attrs)=>{
+    const node=document.createElementNS(ns,name);
+    for(const [key,value] of Object.entries(attrs))node.setAttribute(key,value);
+    return node;
+  };
+  const d=connectorPathData(connector);
+  const maskId=`share-line-mask-${++shareLineId}`;
+  // Same sequence as the star card: ring closes in, then the dashed thread
+  // draws out to the card through its mask.
+  const group=el('g',{class:'share-thread'});
+  group.style.setProperty('--line-delay',`${delay}ms`);
+  const mask=el('mask',{id:maskId,maskUnits:'userSpaceOnUse',x:0,y:0,width:'100%',height:'100%'});
+  mask.append(el('path',{class:'connector-reveal',pathLength:1,d}));
+  group.append(
+    mask,
+    el('path',{class:'share-line connector-thread',mask:`url(#${maskId})`,d}),
+    el('circle',{class:'share-ring',cx:connector.center.x,cy:connector.center.y,r:connector.radius}),
+  );
+  svg.append(group);
 }
 
 function buildShareLayout(entries){

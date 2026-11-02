@@ -1,5 +1,6 @@
 import qrcode from 'qrcode-generator';
 import {normalizeLocale,sloganForLocale,translate} from './i18n.js';
+import {shareConnector} from './connector.js';
 
 const FONT_SERIF = '"Songti SC", "PingFang SC", "Noto Serif SC", Georgia, serif';
 const FONT_MONO = '"SFMono-Regular", Consolas, monospace';
@@ -176,46 +177,27 @@ function wrappedLines(context, value, maxWidth, maxLines = Infinity) {
   return output;
 }
 
-function drawLine(context, card, scale) {
-  if (!card.star?.visible) return;
-  const startX = card.star.x * scale;
-  const startY = card.star.y * scale;
-  const endX = (card.side === 'left' ? card.x + card.w : card.x) * scale;
-  const endY = Math.max(card.y + 24, Math.min(card.y + card.h - 24, card.star.y)) * scale;
-  const gap = Math.max(48, Math.abs(endX - startX) * 0.34);
-  const bend = Math.min(92, Math.max(24, Math.abs(endY - startY) * 0.28 + gap * 0.14));
-  const direction = endX >= startX ? 1 : -1;
+// Mirrors the on-page thread (.connector-thread / .share-ring in style.css):
+// a quiet dashed curve that starts on a ring around the star.
+function drawLine(context, card, scale, viewport) {
+  const connector = shareConnector(card, viewport);
+  if (!connector) return;
+  const { center, start, c1, c2, end, radius } = connector;
   context.save();
-  context.strokeStyle = 'rgba(236, 218, 190, 0.78)';
-  context.lineWidth = 1.25 * scale;
-  context.lineCap = 'round';
-  context.shadowColor = 'rgba(220, 195, 155, 0.36)';
-  context.shadowBlur = 5 * scale;
+  context.lineCap = 'butt';
+  context.strokeStyle = 'rgba(226, 210, 184, 0.5)';
+  context.lineWidth = 1 * scale;
+  context.setLineDash([4 * scale, 5 * scale]);
   context.beginPath();
-  context.moveTo(startX, startY);
-  context.bezierCurveTo(
-    startX + gap * direction,
-    startY + bend * scale,
-    endX - gap * direction,
-    endY - bend * scale,
-    endX,
-    endY,
-  );
+  context.moveTo(start.x * scale, start.y * scale);
+  context.bezierCurveTo(c1.x * scale, c1.y * scale, c2.x * scale, c2.y * scale, end.x * scale, end.y * scale);
+  context.stroke();
+  context.setLineDash([]);
+  context.strokeStyle = 'rgba(232, 214, 186, 0.62)';
+  context.beginPath();
+  context.arc(center.x * scale, center.y * scale, radius * scale, 0, Math.PI * 2);
   context.stroke();
   context.restore();
-
-  const halo = context.createRadialGradient(startX, startY, 0, startX, startY, 7 * scale);
-  halo.addColorStop(0, 'rgba(255, 246, 230, 0.95)');
-  halo.addColorStop(0.35, 'rgba(238, 200, 160, 0.45)');
-  halo.addColorStop(1, 'rgba(238, 200, 160, 0)');
-  context.fillStyle = halo;
-  context.beginPath();
-  context.arc(startX, startY, 7 * scale, 0, Math.PI * 2);
-  context.fill();
-  context.fillStyle = 'rgba(255, 250, 242, 0.95)';
-  context.beginPath();
-  context.arc(startX, startY, 2 * scale, 0, Math.PI * 2);
-  context.fill();
 }
 
 function drawCard(context, card, scale, t) {
@@ -398,7 +380,7 @@ export async function createCardsPageShare({
   drawSnapshot(context, image, width, height);
   drawHeader(context, { title: t('brand.title'), countText, scale, width });
 
-  for (const card of cards) drawLine(context, card, scale);
+  for (const card of cards) drawLine(context, card, scale, { width: viewWidth, height: viewHeight });
   for (const card of cards) drawCard(context, card, scale, t);
 
   if (!cards.length) {

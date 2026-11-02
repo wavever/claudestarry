@@ -357,42 +357,52 @@ body.nebula-ready .control-dock {
   overflow: visible;
 }
 
-.share-line {
+/* Star-to-card thread, shared by the star card and the share mini cards.
+   The dashed stroke is visible only where its solid mask stroke has been
+   drawn, which lets the dashes draw themselves out from the star.
+   Resting states are the final, visible ones; animations use `both` fill so
+   reduced motion (which disables animation) still shows everything. */
+.connector-thread {
   fill: none;
-  stroke: rgba(236, 218, 190, 0.82);
-  stroke-width: 1.35;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 5px rgba(220, 195, 155, 0.42));
+  stroke: rgba(226, 210, 184, 0.5);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+  stroke-linecap: butt;
+}
+
+.connector-reveal {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 6;
   stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  opacity: 0;
+  stroke-dashoffset: 0;
 }
 
-.share-cards-layer.is-revealed .share-line {
-  animation: share-line-draw 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  animation-delay: var(--line-delay, 0ms);
+@keyframes connector-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
 }
 
-@keyframes share-line-draw {
-  0% { opacity: 0; stroke-dashoffset: 1; }
-  12% { opacity: 0.85; }
-  100% { opacity: 0.75; stroke-dashoffset: 0; }
+/* The ring settles in around the star before the thread leaves it. */
+@keyframes connector-ring-close {
+  from { opacity: 0; transform: scale(1.9); }
+  to { opacity: 1; transform: scale(1); }
 }
 
-.share-anchor-dot {
-  fill: rgba(255, 246, 230, 0.92);
-  filter: drop-shadow(0 0 7px rgba(238, 200, 160, 0.75));
-  opacity: 0;
+.share-ring {
+  fill: none;
+  stroke: rgba(232, 214, 186, 0.62);
+  stroke-width: 1;
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
-.share-cards-layer.is-revealed .share-anchor-dot {
-  animation: share-anchor-in 420ms ease forwards;
-  animation-delay: var(--line-delay, 0ms);
+.share-cards-layer.is-revealed .share-ring {
+  animation: connector-ring-close 460ms cubic-bezier(0.22, 1, 0.36, 1) var(--line-delay, 0ms) both;
 }
 
-@keyframes share-anchor-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+.share-cards-layer.is-revealed .share-thread .connector-reveal {
+  animation: connector-draw 720ms cubic-bezier(0.45, 0, 0.2, 1) calc(var(--line-delay, 0ms) + 180ms) both;
 }
 
 .share-mini-card {
@@ -406,15 +416,14 @@ body.nebula-ready .control-dock {
     inset 0 1px rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(18px) saturate(0.85);
   color: #d0c6b7;
-  opacity: 0;
-  transform: translateY(9px) scale(0.985);
-  clip-path: inset(0 0 100% 0);
   will-change: opacity, transform, clip-path;
 }
 
+/* Cards surface while their thread is on its way, so the thread lands on a
+   card that is already there. */
 .share-cards-layer.is-revealed .share-mini-card {
-  animation: share-card-draw 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  animation-delay: var(--card-delay, 0ms);
+  animation: share-card-draw 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--card-delay, 0ms) + 240ms);
 }
 
 @keyframes share-card-draw {
@@ -1174,14 +1183,14 @@ dialog textarea::placeholder {
   overflow: visible;
 }
 
-.card-connector-path {
-  fill: none;
-  stroke: rgba(236, 218, 190, 0.7);
-  stroke-width: 1.15px;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 4px rgba(220, 195, 155, 0.34));
+.card-connector-svg.is-entering .connector-reveal {
+  animation: connector-draw 720ms cubic-bezier(0.45, 0, 0.2, 1) 180ms both;
 }
 
+/* A plain ring around the real particle — nothing is painted over the star
+   itself. #star-anchor is positioned every frame with an inline transform, so
+   the ring lives on ::before where it can scale without moving the anchor.
+   20px diameter = CONNECTOR_RING_RADIUS (10) in connector.js. */
 #star-anchor {
   position: absolute;
   left: 0;
@@ -1189,68 +1198,28 @@ dialog textarea::placeholder {
   width: 20px;
   height: 20px;
   z-index: 6;
-  border: 1px solid rgba(225, 205, 175, 0.46);
-  border-radius: 50%;
-  box-shadow:
-    0 0 9px rgba(218, 200, 167, 0.28),
-    inset 0 0 7px rgba(218, 200, 167, 0.16);
   pointer-events: none;
-  animation: star-anchor-pulse 3s ease-in-out infinite;
 }
 
-/* 粒子外层发光效果 (Particle Glow Halo) */
 #star-anchor::before {
   content: "";
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 13px;
-  height: 13px;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  border: 1px solid rgba(232, 214, 186, 0.6);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 245, 230, 0.95) 0%, rgba(238, 172, 144, 0.6) 35%, rgba(206, 109, 77, 0.25) 65%, transparent 80%);
-  box-shadow: 0 0 11px rgba(255, 240, 220, 0.72), 0 0 19px rgba(206, 109, 77, 0.38);
-  pointer-events: none;
-  animation: star-inner-glow 2.2s ease-in-out infinite alternate;
+  box-shadow: 0 0 6px rgba(218, 200, 167, 0.14);
+  animation: star-ring-breathe 3.2s ease-in-out infinite;
 }
 
-/* 粒子晶莹高亮核心 (Particle Luminous Core) */
-#star-anchor::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 4px;
-  height: 4px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow:
-    0 0 6px #ffffff,
-    0 0 12px rgba(255, 235, 205, 0.95);
-  pointer-events: none;
+#star-anchor.is-entering::before {
+  animation:
+    connector-ring-close 460ms cubic-bezier(0.22, 1, 0.36, 1) both,
+    star-ring-breathe 3.2s ease-in-out 460ms infinite;
 }
 
-@keyframes star-anchor-pulse {
-  0%, 100% {
-    border-color: rgba(225, 205, 175, 0.45);
-    box-shadow: 0 0 8px rgba(218, 200, 167, 0.25), inset 0 0 6px rgba(218, 200, 167, 0.15);
-  }
-  50% {
-    border-color: rgba(238, 218, 192, 0.85);
-    box-shadow: 0 0 16px rgba(206, 109, 77, 0.5), inset 0 0 10px rgba(218, 200, 167, 0.35);
-  }
-}
-
-@keyframes star-inner-glow {
-  0% {
-    transform: translate(-50%, -50%) scale(0.92);
-    opacity: 0.85;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1.15);
-    opacity: 1.0;
-  }
+@keyframes star-ring-breathe {
+  0%, 100% { border-color: rgba(232, 214, 186, 0.6); }
+  50% { border-color: rgba(240, 224, 200, 0.82); }
 }
 
 #star-card {
@@ -1297,14 +1266,15 @@ dialog textarea::placeholder {
   box-shadow: 0 0 12px rgba(218, 178, 130, 0.28);
 }
 
+/* Where the thread lands on the card. */
 #star-card::after {
   content: "";
   position: absolute;
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  background: #f4e5cf;
-  box-shadow: 0 0 9px rgba(235, 207, 166, 0.7);
+  background: rgba(240, 226, 204, 0.85);
+  box-shadow: 0 0 6px rgba(235, 207, 166, 0.45);
 }
 
 #star-card[data-connector="top"]::after {
@@ -1325,8 +1295,15 @@ dialog textarea::placeholder {
   transform: translateY(-50%);
 }
 
-#star-card.is-arrival {
-  animation: star-card-arrival 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
+/* Entrance sequence (see playCardEntrance): ring 0–460ms, thread 180–900ms,
+   card surfaces from 280ms, landing point lights when the thread arrives.
+   The card is placed with an inline transform, so the rise uses `translate`. */
+#star-card.is-entering {
+  animation: star-card-surface 560ms cubic-bezier(0.22, 1, 0.36, 1) 280ms both;
+}
+
+#star-card.is-entering::after {
+  animation: star-card-landing 320ms ease-out 860ms both;
 }
 
 .card-close {
@@ -1390,7 +1367,12 @@ dialog textarea::placeholder {
   scrollbar-width: thin;
 }
 
-@keyframes star-card-arrival {
+@keyframes star-card-surface {
+  from { opacity: 0; translate: 0 8px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes star-card-landing {
   from { opacity: 0; }
   to { opacity: 1; }
 }

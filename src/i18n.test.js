@@ -66,7 +66,7 @@ test('translations interpolate values, fall back predictably, and stay key-compl
   assert.equal(translate('en', 'counter.ariaOne', { count: 1 }), '1 disabled Claude account has left an afterlight');
   assert.equal(translate('zh-CN', 'counter.aria', { count: 2 }), '已有 2 个停用的 claude 账号留下余光');
   assert.equal(translate('zh-CN', 'card.disabledOn', { date: '2026 / 10 / 31' }), '停用于 2026 / 10 / 31');
-  assert.equal(translate('unsupported', 'controls.create'), '添加星星');
+  assert.equal(translate('unsupported', 'controls.create'), '添加账号');
   assert.deepEqual(missingTranslationKeys(), { 'zh-CN': [], en: [] });
 });
 

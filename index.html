@@ -68,21 +68,31 @@
       </div>
     </nav>
     <div id="control-dock" class="control-dock" role="toolbar" aria-label="星河控制" data-i18n-attrs="aria-label:controls.toolbar">
-      <button id="restore" class="control-btn control-btn--restore" aria-label="恢复视角" title="恢复视角" data-i18n-attrs="aria-label:controls.restore|title:controls.restore">
+      <button id="restore" class="control-btn control-btn--restore" aria-label="恢复视角" data-i18n-attrs="aria-label:controls.restore">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
           <path d="M3 3v5h5"/>
           <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
         </svg>
       </button>
-      <button id="own-stars" class="control-btn control-btn--own-stars" type="button" hidden aria-controls="star-card" aria-label="切换我添加的星星" title="切换我添加的星星" data-i18n-attrs="aria-label:controls.ownStars|title:controls.ownStars">
+      <button id="random-star" class="control-btn control-btn--random-star" type="button" hidden aria-controls="star-card" aria-label="查看其他账号" data-i18n-attrs="aria-label:controls.randomStar">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="m12 3 1.55 4.45L18 9l-4.45 1.55L12 15l-1.55-4.45L6 9l4.45-1.55L12 3Z"/>
-          <path d="m19 14 .72 2.28L22 17l-2.28.72L19 20l-.72-2.28L16 17l2.28-.72L19 14Z"/>
-          <path d="m5 15 .55 1.45L7 17l-1.45.55L5 19l-.55-1.45L3 17l1.45-.55L5 15Z"/>
+          <path d="M3 7h3.2c1.4 0 2.7.7 3.5 1.8l4.6 6.4c.8 1.1 2.1 1.8 3.5 1.8H21"/>
+          <path d="M3 17h3.2c1.4 0 2.7-.7 3.5-1.8l.6-.8"/>
+          <path d="M13.7 8.6l.6-.8c.8-1.1 2.1-1.8 3.5-1.8H21"/>
+          <path d="m18 3 3 3-3 3"/>
+          <path d="m18 14 3 3-3 3"/>
         </svg>
       </button>
-      <button id="create" class="control-btn control-btn--create" aria-label="添加星星" title="添加星星" data-i18n-attrs="aria-label:controls.create|title:controls.create">
+      <button id="own-stars" class="control-btn control-btn--own-stars" type="button" hidden aria-controls="star-card" aria-label="查看我的账号" data-i18n-attrs="aria-label:controls.ownStars">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <!-- "My stars": a person wearing a star badge. -->
+          <circle cx="9" cy="7.5" r="3.5"/>
+          <path d="M3 20c0-3.3 2.7-6 6-6h1"/>
+          <path d="M17.5 12.2l1.18 2.98 3.19.2-2.47 2.04.8 3.1-2.7-1.72-2.7 1.72.8-3.1-2.47-2.04 3.19-.2Z"/>
+        </svg>
+      </button>
+      <button id="create" class="control-btn control-btn--create" aria-label="添加账号" data-i18n-attrs="aria-label:controls.create">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <line x1="12" y1="5" x2="12" y2="19"/>
           <line x1="5" y1="12" x2="19" y2="12"/>

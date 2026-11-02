@@ -6,6 +6,7 @@ import { getSharedStarsConfig, latestCivilDate, SharedStarsClient } from './shar
 import {applyDocumentLocale,normalizeLocale,persistLocale,resolveLocale,safeStorage,translate} from './i18n.js';
 import { createCardsPageShare, shareCountText } from './share.js';
 import { cardConnector, connectorPathData, shareConnector } from './connector.js';
+import { drawRandomStar } from './random-star.js';
 import { OWN_IDS_STORAGE_KEY, isOwnStar, loadOwnIds, nextOwnStarIndex, ownStarIndices, rememberOwnId } from './own-stars.js';
 import { FallbackUniverse, supportsWebGL2 } from './fallback-universe.js';
 
@@ -131,6 +132,19 @@ function updateViewControls(){
   if(ownButton){
     ownButton.hidden=!entryControlsReady||ownCount===0;
     ownButton.disabled=!ready||!universe||!entryControlsReady||ownCount===0||!ownStarVisible||meteorBusy();
+  }
+  const randomButton=$('#random-star');
+  if(randomButton){
+    // Runs every frame: one pass, stopping as soon as a visible star is found.
+    let hasOthers=false,othersVisible=false;
+    for(let index=0;index<accounts.length&&!othersVisible;index++){
+      const account=accounts[index];
+      if(account.sample||isOwnAccount(account))continue;
+      hasOthers=true;
+      othersVisible=Boolean(universe?.isAccountStarVisible(index));
+    }
+    randomButton.hidden=!entryControlsReady||!hasOthers;
+    randomButton.disabled=!ready||!universe||!entryControlsReady||!othersVisible||meteorBusy();
   }
   const shareButton=$('#share-page');
   if(shareButton)shareButton.disabled=!ready||!universe||!entryControlsReady;
@@ -384,6 +398,28 @@ function cycleOwnStar(){
   const fromId=cardTransition?.targetId??cardId;
   const index=nextVisibleOwnStarIndex(fromId);
   if(index<0){updateViewControls();return;}
+  visitStarCard(index);
+}
+
+// Visit someone else's record: same pan-and-swap as cycling own stars.
+const randomStarBag=[];
+function isVisitableOtherStar(account,index){
+  return Boolean(account)&&!account.sample&&!isOwnAccount(account)&&Boolean(universe?.isAccountStarVisible(index));
+}
+function visitRandomStar(){
+  if(!ready||!entryControlsReady||meteorBusy()||!universe)return;
+  const index=drawRandomStar(accounts,randomStarBag,{
+    isEligible:isVisitableOtherStar,
+    currentId:cardTransition?.targetId??cardId,
+  });
+  if(index<0){updateViewControls();return;}
+  visitStarCard(index);
+}
+
+// Fly to a star and open its card from a dock control. With a card already
+// open this pans and cross-fades instead of reopening from scratch.
+function visitStarCard(index){
+  hideStarTip();
   const card=$('#star-card');
   const preserveCardView=Boolean(cardId&&!card.hidden&&universe.cardView);
   // Keep the user's current zoom and the existing card-safe frustum. This
@@ -568,6 +604,8 @@ function fatal() {
   $('#create').disabled = true;
   const ownButton=$('#own-stars');
   if(ownButton){ownButton.hidden=true;ownButton.disabled=true;}
+  const randomButton=$('#random-star');
+  if(randomButton){randomButton.hidden=true;randomButton.disabled=true;}
 }
 
 const entryBoot=window.__afterlightEntryBoot;
@@ -1189,6 +1227,7 @@ $('#restore').addEventListener('click',()=>{
 });
 
 $('#own-stars').addEventListener('click',cycleOwnStar);
+$('#random-star').addEventListener('click',visitRandomStar);
 
 function syncLocaleControls(){
   document.querySelectorAll('[data-locale]').forEach(button=>{

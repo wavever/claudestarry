@@ -36,8 +36,9 @@ export const TRANSLATIONS = Object.freeze({
     controls: {
       toolbar: '星河控制',
       restore: '恢复视角',
-      ownStars: '切换我添加的星星',
-      create: '添加星星',
+      ownStars: '查看我的账号',
+      randomStar: '查看其他账号',
+      create: '添加账号',
     },
     card: {
       aria: '星星名片',
@@ -159,8 +160,9 @@ export const TRANSLATIONS = Object.freeze({
     controls: {
       toolbar: 'Galaxy controls',
       restore: 'Restore view',
-      ownStars: 'Cycle through my stars',
-      create: 'Add a star',
+      ownStars: 'View my accounts',
+      randomStar: 'View other accounts',
+      create: 'Add an account',
     },
     card: {
       aria: 'Star record',

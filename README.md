@@ -10,17 +10,7 @@ Claude Starry is an unofficial, community-made memorial for disabled Claude acco
 
 ## Demo
 
-The original recording is split into two players to fit GitHub's upload limit; all animations and original video quality are preserved.
-
-Part 1
-
-https://github.com/user-attachments/assets/58bb6f66-f6b6-43dc-9756-63772fdd78cd
-
-Part 2
-
-https://github.com/user-attachments/assets/c42fdcf6-5597-49c3-bc30-a5bdb104863f
-
-[Download the full original recording](docs/demo.mp4)
+![Claude Starry demo in English](docs/demo-en.gif)
 
 Add the first account, watch its meteor arrive, and open the star card.
 

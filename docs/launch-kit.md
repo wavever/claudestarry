@@ -70,7 +70,7 @@ https://claudestarry.pages.dev/
 ### 配图与视频
 
 - 静态首发：配本次 GitHub 预览封面。
-- 动态版本：配 `docs/demo.mp4`，发布前先确认录屏界面与当前版本一致。
+- 动态版本：中文配 `docs/demo-zh-CN.gif`，英文配 `docs/demo-en.gif`，发布前先确认演示界面与当前版本一致。
 - 配套回复：补仓库链接，把主帖留给产品本身。
 
 ## V2EX

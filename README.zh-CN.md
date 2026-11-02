@@ -10,17 +10,7 @@ Claude Starry 是一个由社区创建的非官方纪念项目。它使用 Three
 
 ## 演示
 
-原片按 GitHub 上传限制分为两段播放，保留全部动画和原始画质。
-
-第一段
-
-https://github.com/user-attachments/assets/58bb6f66-f6b6-43dc-9756-63772fdd78cd
-
-第二段
-
-https://github.com/user-attachments/assets/c42fdcf6-5597-49c3-bc30-a5bdb104863f
-
-[下载完整原版录屏](docs/demo.mp4)
+![Claude Starry 中文演示](docs/demo-zh-CN.gif)
 
 添加第一个账号，观看它以流星划入星河，并打开星星名片。
 

@@ -18,6 +18,12 @@ const ACCOUNT_STAR_MAX_DEPTH_FACTOR = 1.12;
 const ACCOUNT_STAR_SIZE_BREATH = .035;
 const ACCOUNT_STAR_TWINKLE_SPEED_MIN = .55;
 const ACCOUNT_STAR_TWINKLE_SPEED_RANGE = 1.05;
+// Galaxy self-rotation: about one revolution every ~12 minutes — slow enough
+// to read as a living disc rather than an animation. Ramp time constants are
+// in seconds: settle quickly for interaction, recover gently.
+export const GALAXY_SPIN_SPEED = .0087;
+const GALAXY_SPIN_RAMP_UP = 2.4;
+const GALAXY_SPIN_RAMP_DOWN = .35;
 
 // GLSL ES does not implicitly promote an integer literal for float-only
 // overloads such as clamp(). Template interpolation turns JavaScript's `9`
@@ -946,6 +952,29 @@ export class Universe {
     }
     this.renderer.setSize(this.width,this.height);
   }
+  galaxySpinAllowed(formation){
+    // Spin only once the nebula has formed and the camera orbits the galactic
+    // centre. A focused or hovered star must stay put under the pointer/card,
+    // and an off-centre orbit target would let the field drift out of view.
+    return !this.reduced && formation===1 && !this.introActive && !this.focusTween
+      && !this.cardView && this.selected<0 && this.hovered<0 && !this.pointerDown && !this.meteor
+      && this.controls.target.lengthSq()<.01;
+  }
+  updateGalaxySpin(dt,formation){
+    // The whole disc turns rigidly about its own axis (local z), leaving the
+    // distant sky fixed so the motion reads as the galaxy rotating, not the
+    // camera. Angular velocity eases in and out like a body with inertia:
+    // it settles quickly when the user reaches for a star and drifts back up
+    // to speed slowly afterwards.
+    const target=this.galaxySpinAllowed(formation)?GALAXY_SPIN_SPEED:0;
+    const tau=target>(this.spinVelocity??0)?GALAXY_SPIN_RAMP_UP:GALAXY_SPIN_RAMP_DOWN;
+    this.spinVelocity=THREE.MathUtils.lerp(this.spinVelocity??0,target,1-Math.exp(-dt/tau));
+    // An exponential decay never quite reaches zero; stop once the residual
+    // drift is imperceptible so a hovered star is truly still.
+    if(!target&&this.spinVelocity<GALAXY_SPIN_SPEED*.02){this.spinVelocity=0;return;}
+    this.group.rotation.z=(this.group.rotation.z+this.spinVelocity*dt)%(Math.PI*2);
+    this.group.updateMatrixWorld(true);
+  }
   animate(now){
     if(this.disposed)return;
     this.raf=requestAnimationFrame(this.animate);
@@ -1032,6 +1061,7 @@ export class Universe {
       if(t===1){this.focusTween=null;this.syncZoomTarget();}
     }
     this.updateViewOffset(now);
+    this.updateGalaxySpin(dt,curFormation);
     this.controls.update(dt);
     this.updateZoom(dt);
     this.updateMeteor(now);

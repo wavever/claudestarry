@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { ACCOUNT_STAR_GLOW_SCALE, ACCOUNT_STAR_MAX_CSS_DIAMETER, ACCOUNT_STAR_MIN_CSS_DIAMETER, accountStarCssDiameter, accountStarFramebufferDiameter, glslFloatLiteral, Universe } from './universe.js';
+import { ACCOUNT_STAR_GLOW_SCALE, ACCOUNT_STAR_MAX_CSS_DIAMETER, ACCOUNT_STAR_MIN_CSS_DIAMETER, accountStarCssDiameter, accountStarFramebufferDiameter, GALAXY_SPIN_SPEED, glslFloatLiteral, Universe } from './universe.js';
 
 function view() {
   const u=Object.create(Universe.prototype);
@@ -254,4 +254,32 @@ test('account star phase and speed are stable per ID, independent between IDs, a
   assert.deepEqual(sample(0),initial.b);
   assert.deepEqual(sample(1),initial.a);
   u.stars.geometry.dispose();u.starMaterial.dispose();
+});
+
+test('galaxy spin eases in, settles on hover, and stays still when it should',()=>{
+  const spin=()=>{
+    const u=view();
+    Object.assign(u,{group:new THREE.Group(),cardView:false,selected:-1,hovered:-1,pointerDown:null,meteor:null});
+    return u;
+  };
+  const u=spin();
+  u.updateGalaxySpin(1/60,1);
+  assert.ok(u.spinVelocity>0&&u.spinVelocity<GALAXY_SPIN_SPEED*.05,'starts gently, no jump to full speed');
+  for(let i=0;i<60*15;i++)u.updateGalaxySpin(1/60,1);
+  assert.ok(Math.abs(u.spinVelocity-GALAXY_SPIN_SPEED)<GALAXY_SPIN_SPEED*.01);
+  assert.ok(u.group.rotation.z>0);
+  u.hovered=3;
+  for(let i=0;i<90;i++)u.updateGalaxySpin(1/60,1);
+  assert.equal(u.spinVelocity,0);
+  const held=u.group.rotation.z;u.updateGalaxySpin(1/60,1);
+  assert.equal(u.group.rotation.z,held);
+
+  for(const setup of [x=>{x.reduced=true;},x=>{x.controls.target.set(6,1,0);},x=>{x.selected=0;}]){
+    const still=spin();setup(still);
+    for(let i=0;i<120;i++)still.updateGalaxySpin(1/60,1);
+    assert.equal(still.group.rotation.z,0);
+  }
+  const forming=spin();
+  for(let i=0;i<120;i++)forming.updateGalaxySpin(1/60,.6);
+  assert.equal(forming.group.rotation.z,0);
 });

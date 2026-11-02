@@ -1,7 +1,9 @@
 import {defaultConfigForLocale,clearLegacyConfig,localizeDefaultSlogan,easeValue} from './config.js';
 import {EntryClock} from './entry-clock.js';
 import {sampleSlogan} from './text-layout.js';
-import {seededRandom} from './model.js';
+import {loadAccounts,seededRandom} from './model.js';
+import {fetchSharedStarCount,getSharedStarsConfig} from './shared-config.js';
+import {renderAccountCount} from './account-count.js';
 import {applyDocumentLocale,localeSearchWithSelection,normalizeLocale,persistLocale,resolveLocale,safeStorage} from './i18n.js';
 
 const browserStorage=safeStorage(()=>localStorage);
@@ -9,6 +11,22 @@ clearLegacyConfig(browserStorage);
 let locale=resolveLocale({search:location.search,storage:browserStorage,languages:navigator.languages});
 applyDocumentLocale(locale);
 let config=defaultConfigForLocale(locale);
+
+// Show how many accounts are in the galaxy from the first moment, instead of
+// waiting for the slogan, the 3D app download and the full star sync. Shared
+// galaxies ask for just the total; a local galaxy is counted from storage.
+// The app takes over the counter (handOffCounter) once it has loaded.
+let earlyAccountCount=null,counterHandedOff=false;
+const sharedStarsConfig=getSharedStarsConfig(import.meta.env);
+const localAccountCount=()=>{try{return loadAccounts(browserStorage).filter(account=>!account.sample).length;}catch{return null;}};
+const accountCount=(sharedStarsConfig?fetchSharedStarCount(sharedStarsConfig):Promise.resolve(localAccountCount())).then(count=>{
+  if(!Number.isFinite(count))return null;
+  earlyAccountCount=count;
+  if(!counterHandedOff)renderAccountCount(count,locale);
+  return count;
+});
+function handOffCounter(){counterHandedOff=true;return accountCount;}
+
 const canvas=document.createElement('canvas');canvas.id='entry-particles';
 canvas.setAttribute('aria-label',config.slogan);canvas.style.cssText='position:fixed;inset:0;width:100%;height:100%;z-index:2;background:#020202;pointer-events:none';
 document.querySelector('#universe').append(canvas);
@@ -128,6 +146,8 @@ function setLocale(nextLocale){
   config.slogan=localizeDefaultSlogan(config.slogan,locale,import.meta.env.DEV);
   applyDocumentLocale(locale);
   canvas.setAttribute('aria-label',config.slogan);
+  // applyDocumentLocale resets the counter line to its count-less template.
+  if(!counterHandedOff&&earlyAccountCount!==null)renderAccountCount(earlyAccountCount,locale);
   if(!finished)size();
   return locale;
 }
@@ -152,7 +172,7 @@ document.querySelectorAll('[data-locale]').forEach(button=>{
   });
 });
 syncLocaleControls();
-const boot={ready,finish,config,elapsed:0,get locale(){return locale;},setLocale};window.__afterlightEntryBoot=boot;
+const boot={ready,finish,config,elapsed:0,get locale(){return locale;},setLocale,handOffCounter};window.__afterlightEntryBoot=boot;
 addEventListener('resize',size);document.addEventListener('visibilitychange',pause);size();
 
 function draw(now){

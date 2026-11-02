@@ -7,6 +7,7 @@ import {applyDocumentLocale,normalizeLocale,persistLocale,resolveLocale,safeStor
 import { createCardsPageShare, shareCountText } from './share.js';
 import { cardConnector, connectorPathData, shareConnector } from './connector.js';
 import { drawRandomStar } from './random-star.js';
+import { displayedAccountCount, renderAccountCount } from './account-count.js';
 import { OWN_IDS_STORAGE_KEY, isOwnStar, loadOwnIds, nextOwnStarIndex, ownStarIndices, rememberOwnId } from './own-stars.js';
 import { FallbackUniverse, supportsWebGL2 } from './fallback-universe.js';
 
@@ -67,14 +68,18 @@ function isOwnAccount(account) {
 }
 
 function meteorBusy(){return Boolean(universe?.meteor)||meteorQueue.length>0||submissionInFlight;}
+// The entry screen has usually already shown the total (see entry-boot.js);
+// keep it until the shared sync has caught up rather than counting up from 0.
+let earlyAccountCount=null;
 function updateAccountCount(){
-  const count=accounts.filter(a=>!a.sample).length;
+  const count=displayedAccountCount({
+    loaded:accounts.filter(a=>!a.sample).length,
+    early:earlyAccountCount,
+    synced:!sharedConfig||Boolean(sharedStars?.hydrated),
+  });
+  if(count===null)return;
   counter?.setCount(count);
-  $('#counter-value').textContent=formatNumber(count);
-  const countKey=count===1?'One':'';
-  $('#account-counter')?.setAttribute('aria-label',t(`counter.aria${countKey}`,{count:formatNumber(count)}));
-  const suffix=$('#account-counter-suffix');
-  if(suffix)suffix.textContent=t(`counter.suffix${countKey}`);
+  renderAccountCount(count,locale);
 }
 function setVisibleAccounts(next){
   // Remote reconciliation may arrive while the card is fading between two
@@ -609,6 +614,31 @@ function fatal() {
 }
 
 const entryBoot=window.__afterlightEntryBoot;
+// Take over the counter the entry screen started, keeping its early total.
+void entryBoot?.handOffCounter?.().then(count=>{
+  if(Number.isFinite(count)){earlyAccountCount=count;updateAccountCount();}
+});
+
+// Start syncing the shared galaxy now, while the intro is still playing, so
+// the stars are usually here before the nebula forms. Records that land
+// before the renderer exists are simply in `accounts` when it is created.
+if(sharedConfig){
+  const formNote=$('.form-note');
+  if(formNote)formNote.textContent=t('form.sharedNote');
+  sharedStars=new SharedStarsClient(sharedConfig,{
+    onRecords:records=>applySharedRecords(records),
+    onSynced:()=>updateAccountCount(),
+    onRemoteStar:record=>enqueueMeteor(record.id),
+    onError:error=>toast(error.message),
+    message:key=>t(`errors.${key}`),
+  });
+  void sharedStars.start();
+  addEventListener('pagehide',()=>sharedStars?.stop());
+  addEventListener('pageshow',event=>{
+    if(event.persisted)void sharedStars?.start();
+  });
+}
+
 if(entryBoot)await entryBoot.ready;
 
 try {
@@ -676,21 +706,8 @@ try {
   }
 }
 
-if(sharedConfig&&universe){
-  const formNote=$('.form-note');
-  if(formNote)formNote.textContent=t('form.sharedNote');
-  sharedStars=new SharedStarsClient(sharedConfig,{
-    onRecords:records=>applySharedRecords(records),
-    onRemoteStar:record=>enqueueMeteor(record.id),
-    onError:error=>toast(error.message),
-    message:key=>t(`errors.${key}`),
-  });
-  void sharedStars.start();
-  addEventListener('pagehide',()=>sharedStars?.stop());
-  addEventListener('pageshow',event=>{
-    if(event.persisted)void sharedStars?.start();
-  });
-}
+// Stars that arrived in realtime while the intro was still playing.
+drainMeteorQueue();
 
 $('#create').addEventListener('click', () => {
   if (!ready || !entryControlsReady || meteorBusy()) return;

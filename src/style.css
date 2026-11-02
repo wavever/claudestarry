@@ -223,6 +223,12 @@ a:focus-visible {
   text-shadow: 0 1px 10px rgba(0, 0, 0, 0.9);
   pointer-events: none;
   user-select: none;
+  transition: opacity 420ms ease;
+}
+
+/* Hidden until a real total is known, so it never flashes "0". */
+.account-counter.is-pending {
+  opacity: 0;
 }
 
 .account-counter:lang(en) {

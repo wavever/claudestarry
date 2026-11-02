@@ -31,16 +31,7 @@ function cleanText(value, max, { empty = false, multiline = false } = {}) {
   return forbidden.test(text) || textLength(text) > max || (!empty && !text) ? null : text;
 }
 
-export function getSharedStarsConfig(env) {
-  const url = typeof env?.VITE_SUPABASE_URL === 'string' ? env.VITE_SUPABASE_URL.trim().replace(/\/+$/, '') : '';
-  const anonKey = typeof env?.VITE_SUPABASE_ANON_KEY === 'string' ? env.VITE_SUPABASE_ANON_KEY.trim() : '';
-  if (!url || !anonKey) return null;
-  try {
-    const parsed = new URL(url);
-    if (!/^https?:$/.test(parsed.protocol)) return null;
-  } catch { return null; }
-  return { url, anonKey };
-}
+export { getSharedStarsConfig } from './shared-config.js';
 
 export function normalizeSharedStar(row, maxDay = dateToDay(latestCivilDate())) {
   if (!row || typeof row !== 'object') return null;
@@ -111,6 +102,8 @@ export class SharedStarsClient {
     this.onRecords = options.onRecords || (() => {});
     this.onRemoteStar = options.onRemoteStar || (() => {});
     this.onError = options.onError || (() => {});
+    // Called after each complete sync, once the records reflect the whole sky.
+    this.onSynced = options.onSynced || (() => {});
     this.now = options.now || (() => Date.now());
     this.isVisible = options.isVisible || (() => typeof document === 'undefined' || !document.hidden);
     this.fetchImpl = options.fetchImpl || globalThis.fetch?.bind(globalThis);
@@ -181,6 +174,7 @@ export class SharedStarsClient {
       await this.reconcile({ initial, animateNewest, generation });
       if (!this.isActive(generation)) return;
       this.hydrated = true;
+      this.onSynced();
     } catch {
       if (!this.isActive(generation)) return;
       this.onError(this.error('sharedSync'));

@@ -41,7 +41,9 @@ let entryCardsLayer;
 
 function makeEntryCardNode(account, measure = false) {
   const node = document.createElement('div');
-  node.className = measure ? 'entry-card-measure' : 'entry-mini-card is-waiting';
+  // Keep the probe on the same card path as the visible nodes. This makes its
+  // visual footprint remain correct if the card is ever scaled in CSS.
+  node.className = measure ? 'entry-mini-card entry-card-measure is-waiting' : 'entry-mini-card is-waiting';
   node.hidden = !measure;
   node.setAttribute('aria-hidden', 'true');
   node.style.setProperty('--entry-card-lifetime', `${ENTRY_CARD_LIFETIME_MS}ms`);
@@ -57,6 +59,15 @@ function makeEntryCardNode(account, measure = false) {
     node.append(line);
   }
   return node;
+}
+
+function entryCardSize(node) {
+  // offsetWidth/offsetHeight round to integers. The collision layout is in
+  // viewport pixels, so retain the actual (possibly fractional) painted size.
+  const { width, height } = node.getBoundingClientRect();
+  return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+    ? { width, height }
+    : null;
 }
 
 function entryCardBounds() {
@@ -120,10 +131,13 @@ function syncEntryCards() {
     // priority, while available rectangle space determines what can be shown.
     const probe = makeEntryCardNode(accounts.find(account => account.id === candidates[0].id), true);
     $('#universe').append(probe);
-    const width = probe.offsetWidth, height = probe.offsetHeight;
+    const size = entryCardSize(probe);
     probe.remove();
+    if (!size) return;
+    const { width, height } = size;
     const occupied = [];
     const bounds = entryCardBounds();
+    entryCardPlannedPlacements.clear();
     entryCardSelection = new Set(selectEntryCardCandidates(candidates, {
       ...entryCardSelectionOptions(),
       canSelect: candidate => {
@@ -139,17 +153,20 @@ function syncEntryCards() {
       },
     }).map(candidate => candidate.id));
   }
-  const occupied = [];
-  const showing = [], waiting = [];
+  // Selection reserves every slot before any card starts. An entered card keeps
+  // that screen position through its fade-out; tracking a moving star here can
+  // make two cards contend for a slot and visibly jump between alternatives.
   for (let index = 0; index < accounts.length; index++) {
-    (entryCards.get(accounts[index].id)?.timer ? showing : waiting).push(index);
-  }
-  // Reserve space for cards already fading/holding before admitting new ones.
-  for (const index of [...showing, ...waiting]) {
     const account = accounts[index];
     if (account.sample || !entryCardSelection.has(account.id)) continue;
     let card = entryCards.get(account.id);
     if (!card && (entryCardsIntakeClosed || entryCardIds.has(account.id))) continue;
+    if (card?.timer) {
+      // A fade-out is still visible, so it continues to occupy its planned
+      // rectangle until the lifetime timer removes the node.
+      card.node.hidden = false;
+      continue;
+    }
     const point = universe.project(index);
     const visible = universe.isAccountStarVisible(index) && point.visible
       && point.x >= 0 && point.x <= innerWidth && point.y >= 0 && point.y <= innerHeight;
@@ -165,28 +182,15 @@ function syncEntryCards() {
       entryCardsLayer.append(node);
       entryCardIds.add(account.id);
       const planned = entryCardPlannedPlacements.get(account.id);
-      card = { node, timer: null, placement: planned?.placement || null, point: planned?.point || null };
+      card = { node, timer: null, placement: planned?.placement || null };
       entryCards.set(account.id, card);
     }
     card.node.hidden = !visible;
     if (!visible) continue;
-    const width = card.node.offsetWidth, height = card.node.offsetHeight;
-    const previous = card.placement && card.point ? {
-      x: card.placement.x + point.x - card.point.x,
-      y: card.placement.y + point.y - card.point.y,
-    } : null;
-    const placement = placeEntryCard({
-      point: entryCardPreferredPosition(point, width, height), width, height, occupied, previous,
-      bounds: entryCardBounds(), gap: 14,
-    });
-    // When space is exhausted, wait for a slot instead of stacking cards.
-    // The display timer and fade only begin once a card has a valid position.
-    card.node.hidden = !placement;
-    if (!placement) continue;
-    occupied.push(placement);
-    card.placement = placement;
-    card.point = point;
-    card.node.style.transform = `translate3d(${placement.x}px,${placement.y}px,0)`;
+    // Every selected account owns a non-overlapping placement from the initial
+    // pass. A missing plan waits rather than borrowing another card's slot.
+    if (!card.placement) { card.node.hidden = true; continue; }
+    card.node.style.transform = `translate3d(${card.placement.x}px,${card.placement.y}px,0)`;
     if (!card.timer) {
       card.node.classList.remove('is-waiting');
       card.timer = setTimeout(() => {
@@ -203,6 +207,12 @@ function syncEntryCards() {
 addEventListener('pointerdown', stopEntryCards, { once: true, passive: true });
 addEventListener('wheel', stopEntryCards, { once: true, passive: true });
 addEventListener('pagehide', stopEntryCards);
+// Planned positions are in the current viewport coordinate system. Ending the
+// short preview on resize is preferable to moving an already-entered card into
+// another card's space with stale geometry.
+addEventListener('resize', () => {
+  if (entryCardSelection || entryCards.size) stopEntryCards();
+}, { passive: true });
 clearLegacyConfig(browserStorage);
 let locale=resolveLocale({search:location.search,storage:browserStorage,languages:navigator.languages});
 applyDocumentLocale(locale);

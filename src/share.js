@@ -211,6 +211,7 @@ function drawCard(context, card, scale, t) {
   const catalog = text(card.designation) || `AL ${String(account.catalogNumber || 0).padStart(6, '0')}`;
   const alias = limitCharacters(text(account.alias, catalog) || catalog, 32);
   const message = limitCharacters(text(account.message), 180);
+  const owner = limitCharacters(text(account.owner), 32);
   const started = text(account.started);
   const disabled = text(account.date);
 
@@ -264,6 +265,14 @@ function drawCard(context, card, scale, t) {
     context.font = `${13 * scale}px ${FONT_SERIF}`;
     const storyLines = wrappedLines(context, message, contentWidth, 4);
     storyLines.forEach((line, index) => context.fillText(line, x + padding, cursor + index * 19 * scale));
+    cursor += storyLines.length * 19 * scale + 7 * scale;
+  }
+
+  if (owner) {
+    context.fillStyle = '#a48d6d';
+    context.font = `${10 * scale}px ${FONT_MONO}`;
+    const ownerLines = wrappedLines(context, t('card.keptBy', { owner }), contentWidth, 2);
+    ownerLines.forEach((line, index) => context.fillText(line, x + padding, cursor + index * 15.5 * scale));
   }
   context.restore();
 

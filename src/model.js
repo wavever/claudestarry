@@ -44,14 +44,30 @@ export function catalogDesignation(account) {
 
 export const CLAUDE_EPOCH = '2021-01-26';
 export const MIN_DAY = dateToDay(CLAUDE_EPOCH);
+export const ACCOUNT_OWNER_MAX_LENGTH = 32;
 
 function textLength(value) { return Array.from(value).length; }
+const CONTROL_CHARACTER_RE = /[\u0000-\u001F\u007F]/;
+
+export function normalizeAccountOwner(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string' || CONTROL_CHARACTER_RE.test(value)) return null;
+  const owner = value.trim();
+  return owner && textLength(owner) <= ACCOUNT_OWNER_MAX_LENGTH ? owner : null;
+}
+
+function validAccountOwner(value) {
+  return value === null || value === undefined || value === ''
+    || (typeof value === 'string' && !CONTROL_CHARACTER_RE.test(value)
+      && textLength(value.trim()) <= ACCOUNT_OWNER_MAX_LENGTH);
+}
 
 export function validAccount(a, maxDay = dateToDay(today()), minDay = MIN_DAY) {
   if (!a || typeof a !== 'object') return false;
   if (typeof a.id !== 'string' || textLength(a.id) === 0 || textLength(a.id) > 80) return false;
   if (typeof a.alias !== 'string' || a.alias.trim().length === 0 || textLength(a.alias.trim()) > 32) return false;
   if (typeof a.message !== 'string' || textLength(a.message) > 180) return false;
+  if (!validAccountOwner(a.owner)) return false;
   const dateDay = dateToDay(a.date);
   if (!Number.isFinite(dateDay) || (minDay !== null && minDay !== undefined && dateDay < minDay) || dateDay > maxDay) return false;
   if (a.started) {
@@ -96,7 +112,7 @@ export function mergeAccounts(existing, incoming, maxDay = dateToDay(today()), m
     let catalogNumber=unique.get(a.id)?.catalogNumber??a.catalogNumber;
     if(!Number.isSafeInteger(catalogNumber)||catalogNumber<1||(reserved.has(catalogNumber)&&reserved.get(catalogNumber)!==a.id))catalogNumber=next++;
     reserved.set(catalogNumber,a.id);
-    unique.set(a.id, {catalogNumber,id:a.id, alias:a.alias.trim(), date:a.date, started:a.started || null, message:a.message.trim(), sample:false, position:galaxyPosition(hashId(a.id))});
+    unique.set(a.id, {catalogNumber,id:a.id, alias:a.alias.trim(), date:a.date, started:a.started || null, message:a.message.trim(), owner:normalizeAccountOwner(a.owner), sample:false, position:galaxyPosition(hashId(a.id))});
   }
   return [...unique.values()];
 }

@@ -2,6 +2,7 @@
 // from public/ to dist/; keep every secret in Pages environment variables.
 
 const API_PATH = '/api/stars';
+const OWNER_API_PATH = '/api/stars/owner';
 const MAX_BODY_BYTES = 2048;
 const DEFAULT_ALLOWED_ORIGINS = new Set([
   'https://claudestarry.pages.dev',
@@ -10,6 +11,7 @@ const DEFAULT_ALLOWED_ORIGINS = new Set([
 ]);
 const ID_RE = /^MY-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_OWNER_NAME_LENGTH = 32;
 // Keep this transport boundary in sync with CLAUDE_EPOCH in src/model.js and
 // the stars_supported_dates constraint in the Supabase migration.
 export const MIN_ACCOUNT_DATE = '2021-01-26';
@@ -73,17 +75,26 @@ export function latestCivilDate() {
 
 export function validateSubmission(input, maxDate = latestCivilDate(), minDate = MIN_ACCOUNT_DATE) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
-  const permitted = new Set(['id', 'alias', 'started', 'date', 'message']);
+  const permitted = new Set(['id', 'alias', 'started', 'date', 'message', 'owner']);
   if (Object.keys(input).some(key => !permitted.has(key))) return null;
   if (typeof input.id !== 'string' || !ID_RE.test(input.id)) return null;
   const alias = normalizeText(input.alias ?? '', { max: 32, allowEmpty: true, multiline: false });
   const message = normalizeText(input.message ?? '', { max: 180, allowEmpty: true, multiline: true });
+  const owner = normalizeText(input.owner ?? '', { max: MAX_OWNER_NAME_LENGTH, allowEmpty: true, multiline: false });
   const started = input.started === '' || input.started === null || input.started === undefined ? null : input.started;
-  if (alias === null || message === null || !isCalendarDate(input.date)) return null;
+  if (alias === null || message === null || owner === null || !isCalendarDate(input.date)) return null;
   if (started !== null && !isCalendarDate(started)) return null;
   if (input.date > maxDate || (minDate && input.date < minDate)) return null;
   if (started && (started > input.date || (minDate && started < minDate))) return null;
-  return { id: input.id, alias, started, date: input.date, message };
+  return { id: input.id, alias, started, date: input.date, message, owner: owner || null };
+}
+
+export function validateOwnerSubmission(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  if (Object.keys(input).some(key => !['id', 'owner'].includes(key))) return null;
+  if (typeof input.id !== 'string' || !ID_RE.test(input.id)) return null;
+  const owner = normalizeText(input.owner, { max: MAX_OWNER_NAME_LENGTH });
+  return owner ? { id: input.id, owner } : null;
 }
 
 export async function fingerprintIp(ip, salt) {
@@ -132,7 +143,7 @@ function safeSupabaseUrl(url) {
   } catch { return null; }
 }
 
-async function postStar({ submission, ipHash, env, fetchImpl }) {
+async function postStar({ submission, ipHash, env, fetchImpl, ownerOnly = false }) {
   const baseUrl = safeSupabaseUrl(env.SUPABASE_URL);
   if (!baseUrl) return { kind: 'unavailable' };
   let response, timeout, signal;
@@ -143,7 +154,7 @@ async function postStar({ submission, ipHash, env, fetchImpl }) {
     timeout = setTimeout(() => controller.abort(), 15000);
   }
   try {
-    response = await fetchImpl(`${baseUrl}/rest/v1/rpc/create_star_submission`, {
+    response = await fetchImpl(`${baseUrl}/rest/v1/rpc/${ownerOnly ? 'add_star_owner' : 'create_star_submission'}`, {
       method: 'POST',
       headers: {
         apikey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -151,9 +162,11 @@ async function postStar({ submission, ipHash, env, fetchImpl }) {
         'content-type': 'application/json',
         prefer: 'return=representation',
       },
-      body: JSON.stringify({
+      body: JSON.stringify(ownerOnly ? {
+        p_id: submission.id, p_owner_name: submission.owner, p_ip_hash: ipHash,
+      } : {
         p_id: submission.id, p_alias: submission.alias, p_started: submission.started,
-        p_date: submission.date, p_message: submission.message, p_ip_hash: ipHash,
+        p_date: submission.date, p_message: submission.message, p_owner_name: submission.owner, p_ip_hash: ipHash,
       }),
       signal,
     });
@@ -162,6 +175,8 @@ async function postStar({ submission, ipHash, env, fetchImpl }) {
   let payload = null;
   try { payload = await response.json(); } catch {}
   if (!response.ok) {
+    if (payload?.message === 'owner_forbidden') return { kind: 'forbidden' };
+    if (payload?.message === 'owner_already_set') return { kind: 'conflict' };
     if (payload?.message === 'rate_limited') return { kind: 'rate_limited' };
     if (payload?.message === 'invalid_submission') return { kind: 'invalid' };
     return { kind: 'unavailable' };
@@ -171,27 +186,35 @@ async function postStar({ submission, ipHash, env, fetchImpl }) {
 }
 
 async function handleApi(request, env, fetchImpl) {
+  const ownerOnly = new URL(request.url).pathname === OWNER_API_PATH;
   const origin = request.headers.get('origin');
   if (!isAllowedOrigin(origin, env)) return json({ error: 'Request origin is not allowed.' }, 403);
   if (request.method === 'OPTIONS') return withCorsHeaders(new Response(null, { status: 204 }), origin);
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405, origin, { allow: 'POST, OPTIONS' });
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) return json({ error: 'Invalid star submission.' }, 415, origin);
   if (!configurationReady(env)) return json({ error: 'Unable to save this star right now.' }, 503, origin);
-  const submission = validateSubmission(await parseJson(request));
+  const input = await parseJson(request);
+  const submission = ownerOnly ? validateOwnerSubmission(input) : validateSubmission(input);
   if (!submission) return json({ error: 'Invalid star submission.' }, 400, origin);
+  // An unknown address cannot verify a legacy owner. Never treat the shared
+  // fallback fingerprint used by local/demo submissions as ownership proof.
+  const sourceIp = request.headers.get('CF-Connecting-IP');
+  if (ownerOnly && !sourceIp?.trim()) return json({ error: 'Owner verification failed.' }, 403, origin);
   // No raw address is persisted; only this server-side HMAC reaches the RPC.
-  const ipHash = await fingerprintIp(request.headers.get('CF-Connecting-IP') || 'unavailable', env.IP_HASH_SALT);
-  const result = await postStar({ submission, ipHash, env, fetchImpl });
+  const ipHash = await fingerprintIp(sourceIp || 'unavailable', env.IP_HASH_SALT);
+  const result = await postStar({ submission, ipHash, env, fetchImpl, ownerOnly });
+  if (result.kind === 'forbidden') return json({ error: 'Owner verification failed.' }, 403, origin);
+  if (result.kind === 'conflict') return json({ error: 'This star already has an owner name.' }, 409, origin);
   if (result.kind === 'rate_limited') return json({ error: 'Please wait before adding another star.' }, 429, origin, { 'retry-after': '10' });
   if (result.kind === 'invalid') return json({ error: 'Invalid star submission.' }, 400, origin);
   if (result.kind !== 'ok') return json({ error: 'Unable to save this star right now.' }, 503, origin);
-  return json({ star: result.row }, 201, origin);
+  return json({ star: result.row }, ownerOnly ? 200 : 201, origin);
 }
 
 export function createWorker({ fetchImpl = fetch } = {}) {
   return {
     async fetch(request, env) {
-      if (new URL(request.url).pathname === API_PATH) return handleApi(request, env, fetchImpl);
+      if ([API_PATH, OWNER_API_PATH].includes(new URL(request.url).pathname)) return handleApi(request, env, fetchImpl);
       return env.ASSETS.fetch(request);
     },
   };

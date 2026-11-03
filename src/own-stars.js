@@ -59,6 +59,10 @@ export function ownStarIndices(accounts, options) {
   return indices;
 }
 
+export function canAddAccountOwner(account, options) {
+  return Boolean(account && !account.owner && isOwnStar(account, options));
+}
+
 // Returns -1 when no currently visible account belongs to this browser. Stale
 // IDs deliberately remain in storage: a shared list can be temporarily stale,
 // while the dock only acts on records that are actually present right now.

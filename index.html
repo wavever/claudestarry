@@ -104,6 +104,7 @@
       <span id="star-tip-catalog" class="star-tip-catalog"></span>
       <span id="star-tip-dates" class="star-tip-dates"></span>
       <p id="star-tip-message" class="star-tip-message"></p>
+      <p id="star-tip-owner" class="star-tip-owner" hidden></p>
     </div>
     <svg id="card-connector-svg" class="card-connector-svg" style="display:none;" aria-hidden="true">
       <!-- The dashed thread is revealed through a solid mask stroke, so it can
@@ -123,6 +124,8 @@
         <span id="card-dates" class="card-dates-val"></span>
       </div>
       <p id="card-message" class="card-message"></p>
+      <p id="card-owner" class="card-owner" hidden></p>
+      <button id="card-add-owner" class="card-add-owner" type="button" data-i18n="owner.add" hidden>添加账号归属人</button>
     </aside>
     <div id="webgl-error" hidden data-i18n="webgl.error">星河需要支持 WebGL 2 的浏览器，请开启硬件加速后刷新。</div>
     <div id="toast" role="status" aria-live="polite"></div>
@@ -134,6 +137,9 @@
       <h2 id="create-title" data-i18n="dialog.title">留下你被停用账号的余光</h2>
       <label><span data-i18n="dialog.alias">账号名称</span>
         <input name="alias" maxlength="32" autocomplete="off" placeholder="为它起一个独一无二的名称吧" data-i18n-placeholder="dialog.aliasPlaceholder" required autofocus>
+      </label>
+      <label><span data-i18n="dialog.owner">账号归属人</span> <small data-i18n="dialog.optional">可选</small>
+        <input name="owner" maxlength="32" autocomplete="off" placeholder="你的名字或昵称" data-i18n-placeholder="dialog.ownerPlaceholder">
       </label>
       <div class="date-pair">
         <label><span data-i18n="dialog.started">注册日期</span> <small data-i18n="dialog.optional">可选</small><input name="started" type="date" min="2021-01-26"></label>
@@ -148,6 +154,20 @@
   </dialog>
 
   <div id="capture-flash" class="capture-flash" hidden aria-hidden="true"></div>
+
+  <dialog id="owner-dialog" aria-labelledby="owner-title">
+    <button class="dialog-close" data-close aria-label="关闭" data-i18n-attrs="aria-label:dialog.close">×</button>
+    <form id="owner-form">
+      <h2 id="owner-title" data-i18n="owner.title">为这颗星补上归属人</h2>
+      <p id="owner-account" class="owner-account"></p>
+      <label><span data-i18n="dialog.owner">账号归属人</span>
+        <input name="owner" maxlength="32" autocomplete="off" placeholder="你的名字或昵称" data-i18n-placeholder="dialog.ownerPlaceholder" required autofocus>
+      </label>
+      <p class="owner-hint" data-i18n="owner.hint">填写后，名片末行会显示「由 xx 珍藏」。</p>
+      <p id="owner-error" role="alert"></p>
+      <button class="submit-button" type="submit"><span data-i18n="owner.save">保存归属人</span> <span>↗</span></button>
+    </form>
+  </dialog>
 
   <dialog id="share-dialog" class="share-shot" aria-labelledby="share-title">
     <div class="share-shot__inner">

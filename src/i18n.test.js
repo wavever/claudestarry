@@ -94,6 +94,7 @@ test('locale operations never alter validated or shared account data', () => {
     started: '2021-01-26',
     date: '2026-10-30',
     message: '原始故事 remains exactly as submitted.',
+    owner: '小明 / Alex',
   };
   const before = structuredClone(input);
   const zhRecord = mergeAccounts([], [input], dateToDay('2026-10-31'))[0];
@@ -104,6 +105,6 @@ test('locale operations never alter validated or shared account data', () => {
   assert.deepEqual(enRecord, zhRecord);
   assert.deepEqual(
     normalizeStarSubmission(input, '2026-10-31'),
-    { id: input.id, alias: input.alias, started: input.started, date: input.date, message: input.message },
+    { id: input.id, alias: input.alias, started: input.started, date: input.date, message: input.message, owner: input.owner },
   );
 });

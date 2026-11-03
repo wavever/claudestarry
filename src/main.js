@@ -1,6 +1,6 @@
 import { Universe } from './universe.js';
 import { defaultConfigForLocale, clearLegacyConfig, localizeDefaultSlogan } from './config.js';
-import { today, dateToDay, DAY_MS, loadAccounts, validAccount, mergeAccounts, STORAGE_KEY, accountBrightness, starProfile, nextCatalogNumber, catalogDesignation, CLAUDE_EPOCH, MIN_DAY } from './model.js';
+import { ACCOUNT_OWNER_MAX_LENGTH, today, dateToDay, DAY_MS, loadAccounts, validAccount, mergeAccounts, STORAGE_KEY, accountBrightness, starProfile, nextCatalogNumber, catalogDesignation, CLAUDE_EPOCH, MIN_DAY } from './model.js';
 import { ParticleCounter } from './particle-counter.js';
 import { getSharedStarsConfig, latestCivilDate, SharedStarsClient } from './shared-stars.js';
 import {applyDocumentLocale,normalizeLocale,persistLocale,resolveLocale,safeStorage,translate} from './i18n.js';
@@ -8,7 +8,7 @@ import { createCardsPageShare, shareCountText } from './share.js';
 import { cardConnector, connectorPathData, shareConnector } from './connector.js';
 import { drawRandomStar } from './random-star.js';
 import { displayedAccountCount, renderAccountCount } from './account-count.js';
-import { OWN_IDS_STORAGE_KEY, isOwnStar, loadOwnIds, nextOwnStarIndex, ownStarIndices, rememberOwnId } from './own-stars.js';
+import { OWN_IDS_STORAGE_KEY, canAddAccountOwner, isOwnStar, loadOwnIds, nextOwnStarIndex, ownStarIndices, rememberOwnId } from './own-stars.js';
 import { FallbackUniverse, supportsWebGL2 } from './fallback-universe.js';
 import { placeEntryCard } from './entry-card-layout.js';
 import { selectEntryCardCandidates } from './entry-card-selection.js';
@@ -26,6 +26,8 @@ let lastStarTipHit = null;
 let currentFormError = null;
 let sharedStars = null;
 let submissionInFlight = false;
+let ownerEditingId = null;
+let ownerSaving = false;
 const meteorQueue=[];
 const queuedMeteorIds=new Set();
 const browserStorage=safeStorage(()=>localStorage);
@@ -48,11 +50,13 @@ function makeEntryCardNode(account, measure = false) {
   node.setAttribute('aria-hidden', 'true');
   node.style.setProperty('--entry-card-lifetime', `${ENTRY_CARD_LIFETIME_MS}ms`);
   if (!measure) node.dataset.accountId = account.id;
-  for (const [className, text] of [
+  const lines = [
     ['entry-mini-card__catalog', catalogDesignation(account)],
     ['entry-mini-card__name', account.alias],
     ['entry-mini-card__date', account.started ? `${account.started} — ${account.date}` : account.date],
-  ]) {
+  ];
+  if (account.owner) lines.push(['entry-mini-card__owner', t('card.keptBy', { owner: account.owner })]);
+  for (const [className, text] of lines) {
     const line = document.createElement('div');
     line.className = className;
     line.textContent = text;
@@ -495,6 +499,15 @@ function renderCard(account){
   } else {
     cardMsg.hidden = true;
   }
+
+  const cardOwner = $('#card-owner');
+  if (account.owner) {
+    cardOwner.hidden = false;
+    cardOwner.textContent = t('card.keptBy', { owner: account.owner });
+  } else {
+    cardOwner.hidden = true;
+  }
+  $('#card-add-owner').hidden = !canAddAccountOwner(account, ownStarOptions());
 }
 function presentCard(index,{preserveCardView=false,fadeIn=false}={}){
   const account=accounts[index];if(!account)return;
@@ -725,6 +738,14 @@ function showStarTip(hit) {
     tipMsg.hidden = true;
   }
 
+  const tipOwner = $('#star-tip-owner');
+  if (account.owner) {
+    tipOwner.hidden = false;
+    tipOwner.textContent = t('card.keptBy', { owner: account.owner });
+  } else {
+    tipOwner.hidden = true;
+  }
+
   const tip = $('#star-tip');
   lastStarTipHit = {...hit};
   tip.hidden = false;
@@ -903,6 +924,7 @@ $('#create').addEventListener('click', () => {
   const designation=catalogDesignation({catalogNumber:nextCatalogNumber(accounts)});
   if ($('#catalog-preview')) $('#catalog-preview').textContent=sharedStars?t('form.catalogOnSave'):designation;
   $('#star-form input[name=alias]').placeholder=t('dialog.aliasPlaceholder');
+  $('#star-form input[name=owner]').placeholder=t('dialog.ownerPlaceholder');
   const ended = $('#star-form input[name=date]');
   if (!ended.value) ended.value = today();
   syncDateBounds();
@@ -927,6 +949,59 @@ document.querySelectorAll('dialog').forEach(dialog => {
 $('#star-form input[name=started]').addEventListener('input', syncDateBounds);
 $('#star-form input[name=date]').addEventListener('input', syncDateBounds);
 
+$('#card-add-owner').addEventListener('click', () => {
+  const account = accounts.find(item => item.id === cardId);
+  if (ownerSaving || !canAddAccountOwner(account, ownStarOptions())) return;
+  ownerEditingId = account.id;
+  $('#owner-form').reset();
+  $('#owner-error').textContent = '';
+  $('#owner-account').textContent = `${catalogDesignation(account)} · ${account.alias}`;
+  $('#owner-dialog').showModal();
+});
+
+$('#owner-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (ownerSaving) return;
+  const id = ownerEditingId;
+  const account = accounts.find(item => item.id === id);
+  if (!canAddAccountOwner(account, ownStarOptions())) {
+    $('#owner-error').textContent = t('errors.ownerAlreadySet');
+    return;
+  }
+  const owner = new FormData(event.target).get('owner')?.toString().trim() || '';
+  if (!owner || Array.from(owner).length > ACCOUNT_OWNER_MAX_LENGTH || /[\u0000-\u001F\u007F]/.test(owner)) {
+    $('#owner-error').textContent = t(!owner ? 'owner.required' : 'form.ownerTooLong');
+    return;
+  }
+  ownerSaving = true;
+  const submit = $('#owner-form button[type=submit]');
+  submit.disabled = true;
+  $('#owner-form').setAttribute('aria-busy', 'true');
+  $('#owner-error').textContent = '';
+  try {
+    if (sharedStars) {
+      await sharedStars.addOwner(id, owner);
+      applySharedRecords(sharedStars.listRecords());
+    } else {
+      if (!browserStorage) throw new Error(t('form.saveFailed'));
+      const stored = loadAccounts(browserStorage, dateToDay(today()));
+      const original = stored.find(item => item.id === id);
+      if (!original || original.owner) throw new Error(t('errors.ownerAlreadySet'));
+      const next = mergeAccounts(stored, [{ ...original, owner }], dateToDay(today()), null);
+      browserStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      setVisibleAccounts(next);
+    }
+    $('#owner-dialog').close();
+    toast(t('owner.saved'));
+  } catch (error) {
+    $('#owner-error').textContent = error?.message || t('errors.saveFallback');
+  } finally {
+    ownerSaving = false;
+    submit.disabled = false;
+    $('#owner-form').removeAttribute('aria-busy');
+  }
+});
+
 $('#star-form').addEventListener('submit', async event => {
   event.preventDefault();
   if (!ready || meteorBusy()) return;
@@ -939,6 +1014,11 @@ $('#star-form').addEventListener('submit', async event => {
   }
   if (Array.from(rawAlias).length > 32) {
     setFormError('form.aliasTooLong');
+    return;
+  }
+  const rawOwner = data.get('owner')?.toString().trim() || '';
+  if (Array.from(rawOwner).length > ACCOUNT_OWNER_MAX_LENGTH) {
+    setFormError('form.ownerTooLong');
     return;
   }
 
@@ -989,6 +1069,7 @@ $('#star-form').addEventListener('submit', async event => {
     catalogNumber,
     id: 'MY-' + crypto.randomUUID(),
     alias: rawAlias,
+    owner: rawOwner || null,
     started: rawStarted,
     date: rawDate,
     message: rawMessage,
@@ -1094,6 +1175,12 @@ function createShareMiniCard(account,{min,max}){
     story.className='share-mini-card__story';
     story.textContent=account.message.trim();
     node.append(story);
+  }
+  if(account.owner){
+    const owner=document.createElement('p');
+    owner.className='share-mini-card__owner';
+    owner.textContent=t('card.keptBy',{owner:account.owner});
+    node.append(owner);
   }
   return node;
 }

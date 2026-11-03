@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createWorker, fingerprintIp, MIN_ACCOUNT_DATE, validateSubmission } from '../public/_worker.js';
+import { createWorker, fingerprintIp, MIN_ACCOUNT_DATE, validateOwnerSubmission, validateSubmission } from '../public/_worker.js';
 
 const id = 'MY-00000000-0000-4000-8000-000000000001';
 const origin = 'https://claudestarry.pages.dev';
@@ -63,7 +63,7 @@ test('worker sends only the RPC arguments, returns a sanitized record, and rejec
   assert.equal((await response.json()).star.catalog_number, 7);
   assert.equal(calls.length, 1);
   const rpc = JSON.parse(calls[0].init.body);
-  assert.deepEqual(Object.keys(rpc).sort(), ['p_alias', 'p_date', 'p_id', 'p_ip_hash', 'p_message', 'p_started']);
+  assert.deepEqual(Object.keys(rpc).sort(), ['p_alias', 'p_date', 'p_id', 'p_ip_hash', 'p_message', 'p_owner_name', 'p_started']);
   assert.match(rpc.p_ip_hash, /^[0-9a-f]{64}$/);
   assert.equal(calls[0].init.headers.authorization, 'Bearer service-secret');
 
@@ -86,4 +86,53 @@ test('worker stream cap and upstream failures do not expose backend details', as
   }), env);
   assert.equal(response.status, 503);
   assert.doesNotMatch(JSON.stringify(await response.json()), /database secret/);
+});
+
+
+test('owner names are optional on creation and validated without changing other fields', async () => {
+  assert.equal(validateSubmission(body, '2022-01-02').owner, null);
+  assert.equal(validateSubmission({ ...body, owner: '  小明  ' }, '2022-01-02').owner, '小明');
+  for (const owner of [42, 'x'.repeat(33), 'bad\nname']) {
+    assert.equal(validateSubmission({ ...body, owner }, '2022-01-02'), null);
+  }
+  const worker = createWorker({ fetchImpl: async (_url, init) => {
+    assert.equal(JSON.parse(init.body).p_owner_name, '小明');
+    return Response.json([{ ...body, owner_name: '小明', catalog_number: 1, created_at: '2022-01-02T00:00:00Z' }]);
+  }});
+  const response = await worker.fetch(new Request(origin + '/api/stars', {
+    method: 'POST', headers: { origin, 'content-type': 'application/json' },
+    body: JSON.stringify({ ...body, owner: '小明' }),
+  }), env);
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).star.owner_name, '小明');
+});
+
+test('owner-only endpoint passes trusted server fingerprint and cannot change other fields', async () => {
+  assert.deepEqual(validateOwnerSubmission({ id, owner: '  Alex  ' }), { id, owner: 'Alex' });
+  for (const input of [{ id, owner: '' }, { id, owner: 'bad\nname' }, { id, owner: 'x'.repeat(33) }, { id, owner: 'Alex', alias: 'Changed' }, { id, owner: 'Alex', ipHash: 'spoof' }]) {
+    assert.equal(validateOwnerSubmission(input), null);
+  }
+  let called = 0;
+  const worker = createWorker({ fetchImpl: async (url, init) => {
+    called++;
+    assert.match(url, /\/rpc\/add_star_owner$/);
+    const rpc = JSON.parse(init.body);
+    assert.deepEqual(Object.keys(rpc).sort(), ['p_id', 'p_ip_hash', 'p_owner_name']);
+    assert.equal(rpc.p_ip_hash, await fingerprintIp('203.0.113.10', env.IP_HASH_SALT));
+    return Response.json([{ ...body, owner_name: rpc.p_owner_name, catalog_number: 7, created_at: '2022-01-02T00:00:00Z' }]);
+  }});
+  const request = (data, requestOrigin = origin) => new Request(origin + '/api/stars/owner', {
+    method: 'POST', headers: { origin: requestOrigin, 'content-type': 'application/json', 'CF-Connecting-IP': '203.0.113.10' }, body: JSON.stringify(data),
+  });
+  assert.equal((await worker.fetch(request({ id, owner: 'Alex' }), env)).status, 200);
+  assert.equal((await worker.fetch(request({ id, owner: 'Alex' }, 'https://evil.example'), env)).status, 403);
+  assert.equal((await worker.fetch(request({ id, owner: 'Alex', date: '2022-01-03' }), env)).status, 400);
+  const unknownIp = request({ id, owner: 'Alex' });
+  unknownIp.headers.delete('CF-Connecting-IP');
+  assert.equal((await worker.fetch(unknownIp, env)).status, 403);
+  assert.equal(called, 1);
+  for (const [message, status] of [['owner_forbidden', 403], ['owner_already_set', 409]]) {
+    const denied = createWorker({ fetchImpl: async () => Response.json({ message }, { status: 400 }) });
+    assert.equal((await denied.fetch(request({ id, owner: 'Alex' }), env)).status, status);
+  }
 });

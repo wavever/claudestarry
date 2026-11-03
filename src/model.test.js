@@ -2,6 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { accountStarSizeScale, brightness, CLAUDE_EPOCH, dateToDay, dayToDate, MIN_LIGHT, HALF_LIFE, validAccount, mergeAccounts, loadAccounts, galaxyPosition } from './model.js';
 import { BASELINE, HISTORY_LEVELS, historyLevel } from './baseline.js';
+test('optional attribution survives local persistence and old records remain readable', () => {
+  const old = { id: 'MY-old', alias: 'old', date: '2020-01-02', message: '' };
+  const added = { id: 'MY-new', alias: 'new', date: '2026-01-02', message: '', owner: '  小明  ' };
+  const records = mergeAccounts([old], [added], dateToDay('2026-11-03'), null);
+  assert.equal(records[0].owner, null);
+  assert.equal(records[1].owner, '小明');
+  const reloaded = loadAccounts({ getItem: () => JSON.stringify(records) }, dateToDay('2026-11-03'));
+  assert.equal(reloaded[1].owner, '小明');
+  for (const owner of [42, 'x'.repeat(33), 'bad\nname']) {
+    assert.equal(validAccount({ ...added, owner }, dateToDay('2026-11-03')), false);
+  }
+  assert.equal(validAccount({ ...added, owner: '✨'.repeat(32) }, dateToDay('2026-11-03')), true);
+});
 test('light declines monotonically, halves excess light every 120 days and retains a floor', () => {
   assert.equal(brightness(0),1);
   assert.equal(brightness(-1),0);

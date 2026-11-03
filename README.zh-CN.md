@@ -4,7 +4,7 @@
 
 > 被停用的 Claude 账号没有消失，只是从此不再回应，但仍留有余光。
 
-Claude Starry 是一个由社区创建的非官方纪念项目。它使用 Three.js 绘制共享星河，让访客为被停用的 Claude 账号留下一颗星、一个昵称、一个日期，以及一段可选的回忆。
+Claude Starry 是一个由社区创建的非官方纪念项目。它使用 Three.js 绘制共享星河，让访客为被停用的 Claude 账号留下一颗星、一个昵称、一个日期、一个可选的账号归属人，以及一段可选的回忆。
 
 [在线体验](https://claudestarry.pages.dev/) · [GitHub](https://github.com/wavever/claudestarry) · [X @HtWavever](https://x.com/HtWavever) · [部署说明](docs/deployment.md) · [MIT License](LICENSE)
 
@@ -19,8 +19,9 @@ Claude Starry 是一个由社区创建的非官方纪念项目。它使用 Three
 - 粒子文字开场、星云、旋转和连续缩放。
 - 新的共享记录以流星划入星河，并同步给其他打开页面的访客。
 - 可查看星星名片、复制或下载名片图片，并由访客主动分享到 X。
-- 昵称和停用日期必填；注册日期和回忆可留空。
+- 昵称和停用日期必填；账号归属人、注册日期和回忆可留空。填写账号归属人后会公开展示。
 - 中文 / English 界面：优先按浏览器语言选择，手动选择会保存在当前浏览器；`?locale=zh-CN` 或 `?locale=en` 可临时指定语言。
+- 可在自己的旧名片上一次性补填账号归属人；共享记录需使用原提交网络验证。
 - 支持操作系统的减少动态效果偏好。
 
 ## 本地运行

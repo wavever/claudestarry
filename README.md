@@ -4,7 +4,7 @@
 
 > Disabled Claude accounts have not disappeared. They no longer respond, but they still leave an afterlight.
 
-Claude Starry is an unofficial, community-made memorial for disabled Claude accounts. It renders a shared galaxy with Three.js, where visitors can leave an alias, a date, and an optional memory as a star.
+Claude Starry is an unofficial, community-made memorial for disabled Claude accounts. It renders a shared galaxy with Three.js, where visitors can leave an alias, a date, an optional account owner name, and an optional memory as a star.
 
 [Live experience](https://claudestarry.pages.dev/) · [GitHub](https://github.com/wavever/claudestarry) · [X @HtWavever](https://x.com/HtWavever) · [Deployment guide](docs/deployment.md) · [MIT License](LICENSE)
 
@@ -19,8 +19,9 @@ Add the first account, watch its meteor arrive, and open the star card.
 - Particle-text entry, nebula, orbit controls, and continuous zoom.
 - New shared records arrive as meteors and synchronize with other open sessions.
 - Star records can be viewed, copied or downloaded as images, and shared to X by the visitor.
-- An alias and disabled date are required; registration date and memory are optional.
+- An alias and disabled date are required; an account owner name, registration date, and memory are optional. An owner name is public when supplied.
 - Chinese and English UI: the browser language is used first, manual selection is saved locally, and `?locale=zh-CN` or `?locale=en` temporarily selects a locale.
+- Your existing cards can add a missing owner name once; shared records require the original submission network.
 - Respects the operating system’s reduced-motion preference.
 
 ## Run locally

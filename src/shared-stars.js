@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import { CLAUDE_EPOCH, dateToDay, validAccount } from './model.js';
+import { ACCOUNT_OWNER_MAX_LENGTH, CLAUDE_EPOCH, dateToDay, validAccount } from './model.js';
 
 export const SHARED_STAR_PAGE_SIZE = 1000;
-export const SHARED_STAR_SELECT = 'id,catalog_number,alias,started,date,message,created_at';
+export const SHARED_STAR_SELECT = 'id,catalog_number,alias,started,date,message,owner_name,created_at,updated_at';
 export const SHARED_STAR_RECONCILE_OVERLAP_MS = 60000;
 const ID_RE = /^MY-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const DEFAULT_ERROR_MESSAGES = Object.freeze({
@@ -13,6 +13,8 @@ const DEFAULT_ERROR_MESSAGES = Object.freeze({
   sharedSave: '暂时无法保存，请检查填写内容后重试。',
   sharedUnavailable: '共享星河暂时无法保存。',
   invalidRecord: '共享星河返回了无效记录。',
+  ownerForbidden: '无法验证这条记录的归属，请使用添加时的网络重试。',
+  ownerAlreadySet: '这颗星已经填写了账号归属人，请刷新后查看。',
 });
 
 export const latestCivilDate = () => new Date(Date.now() + 14 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -37,6 +39,8 @@ export function normalizeSharedStar(row, maxDay = dateToDay(latestCivilDate())) 
   if (!row || typeof row !== 'object') return null;
   const catalogNumber = Number(row.catalog_number ?? row.catalogNumber);
   const started = row.started === null || row.started === '' || row.started === undefined ? null : row.started;
+  const ownerValue = row.owner_name === undefined ? row.owner : row.owner_name;
+  const owner = cleanText(ownerValue ?? '', ACCOUNT_OWNER_MAX_LENGTH, { empty: true });
   const createdAt = typeof row.created_at === 'string' ? row.created_at : row.createdAt;
   const account = {
     id: row.id,
@@ -45,14 +49,16 @@ export function normalizeSharedStar(row, maxDay = dateToDay(latestCivilDate())) 
     started,
     date: row.date,
     message: cleanText(row.message ?? '', 180, { empty: true, multiline: true }) ?? '',
+    owner: owner || null,
     createdAt,
+    updatedAt: row.updated_at ?? row.updatedAt ?? createdAt,
   };
-  if (!ID_RE.test(account.id || '') || !Number.isSafeInteger(catalogNumber) || catalogNumber < 1 || !isDate(account.date) || (started !== null && !isDate(started)) || !Number.isFinite(Date.parse(createdAt))) return null;
+  if (!ID_RE.test(account.id || '') || !Number.isSafeInteger(catalogNumber) || catalogNumber < 1 || !isDate(account.date) || (started !== null && !isDate(started)) || owner === null || !Number.isFinite(Date.parse(createdAt)) || !Number.isFinite(Date.parse(account.updatedAt))) return null;
   return validAccount(account, maxDay, null) ? account : null;
 }
 
 const sameRecord = (a, b) => a.id === b.id && a.catalogNumber === b.catalogNumber && a.alias === b.alias &&
-  a.started === b.started && a.date === b.date && a.message === b.message && a.createdAt === b.createdAt;
+  a.started === b.started && a.date === b.date && a.message === b.message && a.owner === b.owner && a.createdAt === b.createdAt && a.updatedAt === b.updatedAt;
 
 export const sortSharedStars = records => [...records].sort((a, b) => a.catalogNumber - b.catalogNumber || a.id.localeCompare(b.id));
 
@@ -86,11 +92,12 @@ export function newestRecentStar(records, now = Date.now(), maxAgeMs = 120000) {
 export function normalizeStarSubmission(input, maxDate = latestCivilDate(), minDate = CLAUDE_EPOCH) {
   const alias = cleanText(input?.alias ?? '', 32, { empty: true });
   const message = cleanText(input?.message ?? '', 180, { empty: true, multiline: true });
+  const owner = cleanText(input?.owner ?? '', ACCOUNT_OWNER_MAX_LENGTH, { empty: true });
   const started = input?.started === '' || input?.started === null || input?.started === undefined ? null : input?.started;
-  if (!ID_RE.test(input?.id || '') || alias === null || message === null || !isDate(input?.date) || (started !== null && !isDate(started))) return null;
+  if (!ID_RE.test(input?.id || '') || alias === null || message === null || owner === null || !isDate(input?.date) || (started !== null && !isDate(started))) return null;
   if (input.date > maxDate || (minDate && input.date < minDate)) return null;
   if (started && (started > input.date || (minDate && started < minDate))) return null;
-  return { id: input.id, alias, started, date: input.date, message };
+  return { id: input.id, alias, started, date: input.date, message, owner: owner || null };
 }
 
 export class SharedStarsError extends Error {
@@ -114,7 +121,7 @@ export class SharedStarsClient {
       realtime: { params: { eventsPerSecond: 2 } },
     });
     this.recordsById = new Map(); this.ownIds = new Set();
-    this.latestCreatedAt = null; this.latestCreatedAtMs = -Infinity;
+    this.latestChangedAt = null; this.latestChangedAtMs = -Infinity;
     this.channel = null; this.channelGeneration = null; this.socketLive = false; this.running = false; this.hydrated = false; this.paused = false;
     this.lifecycle = 0;
     this.fallbackTimer = null; this.syncPromise = null; this.syncGeneration = null;
@@ -261,9 +268,9 @@ export class SharedStarsClient {
     if (this.syncPromise && this.syncGeneration === generation) return this.syncPromise;
     // PostgreSQL now() is transaction-start time. A small overlap covers a
     // delayed commit after reconnect; stable IDs deduplicate it for free.
-    const since = initial || !this.hydrated || !Number.isFinite(this.latestCreatedAtMs)
+    const since = initial || !this.hydrated || !Number.isFinite(this.latestChangedAtMs)
       ? null
-      : new Date(Math.max(0, this.latestCreatedAtMs - SHARED_STAR_RECONCILE_OVERLAP_MS)).toISOString();
+      : new Date(Math.max(0, this.latestChangedAtMs - SHARED_STAR_RECONCILE_OVERLAP_MS)).toISOString();
     const sync = this.fetchPages(since, generation).then(added => {
       if (!this.isCurrentGeneration(generation)) return [];
       if (!initial && animateNewest) this.emitNewestRemote(added);
@@ -284,9 +291,9 @@ export class SharedStarsClient {
     for (let offset = 0; ; offset += SHARED_STAR_PAGE_SIZE) {
       if (!this.isCurrentGeneration(generation)) return [];
       let query = this.client.from('stars').select(SHARED_STAR_SELECT)
-        .order('created_at', { ascending: true }).order('id', { ascending: true })
+        .order('updated_at', { ascending: true }).order('id', { ascending: true })
         .range(offset, offset + SHARED_STAR_PAGE_SIZE - 1);
-      if (since) query = query.gte('created_at', since);
+      if (since) query = query.gte('updated_at', since);
       const { data, error } = await query;
       if (!this.isCurrentGeneration(generation)) return [];
       if (error) throw this.error('sharedSync');
@@ -305,8 +312,8 @@ export class SharedStarsClient {
       const previous = this.recordsById.get(record.id);
       if (!previous) added.push(record);
       if (!previous || !sameRecord(previous, record)) { this.recordsById.set(record.id, record); changed = true; }
-      const timestamp = Date.parse(record.createdAt);
-      if (timestamp > this.latestCreatedAtMs) { this.latestCreatedAtMs = timestamp; this.latestCreatedAt = record.createdAt; }
+      const timestamp = Date.parse(record.updatedAt);
+      if (timestamp > this.latestChangedAtMs) { this.latestChangedAtMs = timestamp; this.latestChangedAt = record.updatedAt; }
     }
     return { added, changed };
   }
@@ -345,6 +352,31 @@ export class SharedStarsClient {
     if (!response?.ok) throw this.error('sharedUnavailable', response?.status || 0);
     const record = normalizeSharedStar(body?.star);
     if (!record) throw this.error('invalidRecord');
+    const result = this.ingest([record]);
+    if (result.changed) this.emitRecords();
+    return record;
+  }
+
+  async addOwner(id, name) {
+    const owner = cleanText(name, ACCOUNT_OWNER_MAX_LENGTH);
+    if (!ID_RE.test(id || '') || !owner) throw this.error('invalidSubmission', 400);
+    if (!this.fetchImpl) throw this.error('connection');
+    let response;
+    try {
+      response = await this.fetchImpl('/api/stars/owner', {
+        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, owner }),
+      });
+    } catch { throw this.error('connection'); }
+    if (!response.ok) {
+      const key = response.status === 403 ? 'ownerForbidden'
+        : response.status === 409 ? 'ownerAlreadySet' : 'sharedSave';
+      throw this.error(key, response.status);
+    }
+    let body;
+    try { body = await response.json(); } catch { throw this.error('invalidRecord'); }
+    const record = normalizeSharedStar(body?.star);
+    if (!record || record.id !== id || record.owner !== owner) throw this.error('invalidRecord');
     const result = this.ingest([record]);
     if (result.changed) this.emitRecords();
     return record;

@@ -14,6 +14,12 @@ Create a Supabase project, then run every SQL file in `supabase/migrations/` in 
 
 The migrations create the public `stars` table, its read-only browser policies, the private submission-fingerprint store, Realtime publication, and the `create_star_submission` RPC. Do not grant browser roles direct insert, update, or delete access: the Worker should remain the only writer.
 
+For an existing deployment, apply newly added migrations before deploying the Worker and browser bundle that use them. In particular, `20261103000000_account_owner_name.sql` adds the nullable public `owner_name` field and a seven-argument RPC overload; it keeps existing records and the prior six-argument RPC working during a rolling deployment.
+
+`20261103010000_add_owner_to_existing_stars.sql` adds the service-only `add_star_owner` RPC and an `updated_at` sync cursor. It allows one missing owner name to be filled from the original submission network (the Worker recomputes the private IP fingerprint), accepts identical retries, and rejects overwrites. The browser only offers the action for its own saved record IDs. This is a lightweight legacy check, not an authenticated ownership system: a changed network cannot claim an old record, and a shared network is not an individual identity. Do not expose this RPC to browser roles or accept a client-supplied IP hash.
+
+The same migration replaces the supported-date constraint with an insert/date-update trigger, so legacy records predating the current date floor can receive an owner without weakening validation on newly submitted dates. Existing public records are preserved. Apply both owner migrations before publishing this version.
+
 ## 2. Configure the browser build
 
 Copy `.env.example` to `.env.production.local` and provide only browser-safe values:

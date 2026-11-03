@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   OWN_IDS_STORAGE_KEY,
+  canAddAccountOwner,
   loadOwnIds,
   nextOwnStarIndex,
   ownStarIndices,
@@ -25,6 +26,16 @@ test('own IDs survive a new session and ignore malformed stored values', () => {
 
   const broken = storage({ [OWN_IDS_STORAGE_KEY]: '{not JSON' });
   assert.deepEqual([...loadOwnIds(broken)], []);
+});
+
+test('only an own star with missing attribution offers the add-owner action', () => {
+  const options = { ownIds: new Set(['mine', 'filled']) };
+  assert.equal(canAddAccountOwner({ id: 'mine' }, options), true);
+  assert.equal(canAddAccountOwner({ id: 'mine', owner: null }, options), true);
+  assert.equal(canAddAccountOwner({ id: 'filled', owner: 'Alex' }, options), false);
+  assert.equal(canAddAccountOwner({ id: 'someone-else' }, options), false);
+  assert.equal(canAddAccountOwner(null, options), false);
+  assert.equal(canAddAccountOwner({ id: 'MY-legacy' }, { includeLocalMyStars: true }), true);
 });
 
 test('cycling only uses visible current-user stars and wraps from the active card', () => {

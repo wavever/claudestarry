@@ -303,14 +303,34 @@ function drawHeader(context, { title, countText, scale, width }) {
   lines.forEach((line, index) => context.fillText(line, 18 * scale, (65 + index * 22) * scale));
 }
 
+export function shareSloganLayout(context, slogan, { scale = 1, width, height }) {
+  const mobile = width / scale < 700;
+  const fontSize = (mobile ? 17 : 23) * scale;
+  const quoteSize = (mobile ? 38 : 48) * scale;
+  const x = 18 * scale;
+  const textX = x + (mobile ? 20 : 26) * scale;
+  // Keep both quotes and every line to the left of the QR panel.
+  const right = Math.min(width * .68, 800 * scale);
+  context.font = `400 ${fontSize}px ${FONT_SERIF}`;
+  const lines = wrappedLines(context, slogan, Math.max(fontSize, right - textX - quoteSize * .55));
+  const lineHeight = (mobile ? 26 : 34) * scale;
+  const first = height - 56 * scale - Math.max(0, lines.length - 1) * lineHeight;
+  const lastWidth = lines.length ? context.measureText(lines.at(-1)).width : 0;
+  return { x, textX, fontSize, quoteSize, lines, lineHeight, first, lastWidth, top: first - fontSize - 12 * scale };
+}
+
 function drawSlogan(context, slogan, { scale, width, height }) {
+  const layout = shareSloganLayout(context, slogan, { scale, width, height });
+  if (!layout.lines.length) return;
+  const { x, textX, fontSize, quoteSize, lines, lineHeight, first, lastWidth } = layout;
   context.textAlign = 'left';
   context.fillStyle = 'rgba(225, 216, 201, 0.9)';
-  context.font = `400 ${23 * scale}px ${FONT_SERIF}`;
-  const lines = wrappedLines(context, slogan, Math.min(width * 0.68, 760 * scale), 3);
-  const lineHeight = 34 * scale;
-  const first = height - 56 * scale - (lines.length - 1) * lineHeight;
-  lines.forEach((line, index) => context.fillText(line, 18 * scale, first + index * lineHeight));
+  context.font = `400 ${fontSize}px ${FONT_SERIF}`;
+  lines.forEach((line, index) => context.fillText(line, textX, first + index * lineHeight));
+  context.fillStyle = 'rgba(213, 197, 172, 0.72)';
+  context.font = `400 ${quoteSize}px ${FONT_SERIF}`;
+  context.fillText('“', x, first + 10 * scale);
+  context.fillText('”', textX + lastWidth + 5 * scale, first + (lines.length - 1) * lineHeight + 10 * scale);
 }
 
 async function resolveSnapshot(snapshot, errorMessage) {
@@ -392,9 +412,7 @@ export async function createCardsPageShare({
   for (const card of cards) drawLine(context, card, scale, { width: viewWidth, height: viewHeight });
   for (const card of cards) drawCard(context, card, scale, t);
 
-  if (!cards.length) {
-    drawSlogan(context, String(slogan ?? sloganForLocale(resolvedLocale)), { scale, width, height });
-  }
+  drawSlogan(context, String(slogan ?? sloganForLocale(resolvedLocale)), { scale, width, height });
 
   // QR + URL directly on the image, bottom-right, in theme colours. A dark
   // glass panel supplies contrast without introducing a white background.

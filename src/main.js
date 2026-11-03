@@ -4,7 +4,7 @@ import { ACCOUNT_OWNER_MAX_LENGTH, today, dateToDay, DAY_MS, loadAccounts, valid
 import { ParticleCounter } from './particle-counter.js';
 import { getSharedStarsConfig, latestCivilDate, SharedStarsClient } from './shared-stars.js';
 import {applyDocumentLocale,normalizeLocale,persistLocale,resolveLocale,safeStorage,translate} from './i18n.js';
-import { createCardsPageShare, shareCountText } from './share.js';
+import { createCardsPageShare, shareCountText, shareSloganLayout } from './share.js';
 import { cardConnector, connectorPathData, shareConnector } from './connector.js';
 import { drawRandomStar } from './random-star.js';
 import { displayedAccountCount, renderAccountCount } from './account-count.js';
@@ -1241,8 +1241,12 @@ function buildShareLayout(entries){
   const heights=nodes.map(node=>node.offsetHeight||160);
 
   const top=Math.max(100,Math.round(innerHeight*0.14));
-  const leftBottom=innerHeight-Math.max(24,Math.round(innerHeight*0.04));
-  const rightBottom=innerHeight-Math.max(180,Math.round(innerHeight*0.24));
+  const sloganContext=document.createElement('canvas').getContext('2d');
+  const sloganTop=sloganContext
+    ? shareSloganLayout(sloganContext,config.slogan,{width:innerWidth,height:innerHeight}).top-18
+    : innerHeight-200;
+  const leftBottom=Math.min(sloganTop,innerHeight-Math.max(24,Math.round(innerHeight*0.04)));
+  const rightBottom=Math.min(sloganTop,innerHeight-Math.max(180,Math.round(innerHeight*0.24)));
   const gap=12;
 
   // Group each card by the side its star actually sits on, then place each
